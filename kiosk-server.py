@@ -9,6 +9,8 @@ on the internet:
                       Weather questions also get a live forecast from Open-Meteo (free, no key), and
                       "meaning of ..." questions a dictionary entry (dictionaryapi.dev, then Wiktionary; free, no key).
                       Results can carry an "image" (a Wikipedia picture) for the answer card on screen.
+  /api/videos?q=...   YouTube videos for the kiosk to play (Restricted Mode on, live streams and very long videos left
+                      out). Uses the YouTube Data API with safeSearch=strict when "youtube api key | ..." is in [INTERNET].
   /api/status         which search the kiosk is using (shown on the F9 screen)
   /api/settings       the kiosk's saved settings (voice, timers, scheduled lights, Telegram sign-ups) in kiosk-settings.json
   /api/hardware       this PC's memory and graphics card, so Cubot can pick the best AI model for it
@@ -160,6 +162,8 @@ def settings():
         k = k.lower()
         if k in ("ollama api key", "api key", "ollama key") and v:
             out["key"] = v
+        elif k in ("youtube api key", "youtube key") and v:
+            out["youtube"] = v
         elif k in ("weather place", "city", "place") and v:
             out["place"] = v
         elif k in ("weather lat lon", "lat lon", "location") and v:
@@ -309,6 +313,106 @@ def search(q):
     return {"query": q, "results": results[:6], "image": image, "source": "+".join(used), "errors": errors}
 
 
+def _secs(t):
+    """'12:34' or '1:02:03' -> seconds (0 if unknown)"""
+    try:
+        n = 0
+        for part in (t or "").split(":"):
+            n = n * 60 + int(part)
+        return n
+    except ValueError:
+        return 0
+
+
+def _iso_secs(d):
+    """'PT4M13S' -> 253"""
+    m = re.fullmatch(r"P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", d or "")
+    if not m:
+        return 0
+    dd, h, mi, se = (int(x or 0) for x in m.groups())
+    return ((dd * 24 + h) * 60 + mi) * 60 + se
+
+
+def _video_renderers(node, out):
+    """Every "videoRenderer" in YouTube's page data, in page order."""
+    if isinstance(node, dict):
+        if "videoRenderer" in node and isinstance(node["videoRenderer"], dict):
+            out.append(node["videoRenderer"])
+        for v in node.values():
+            if isinstance(v, (dict, list)):
+                _video_renderers(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _video_renderers(v, out)
+    return out
+
+
+def _text(o):
+    if not isinstance(o, dict):
+        return ""
+    return o.get("simpleText") or "".join(r.get("text", "") for r in o.get("runs", []))
+
+
+def youtube_page_search(q):
+    """YouTube's own search page with Restricted Mode on (the PREF cookie), videos only."""
+    url = "https://www.youtube.com/results?" + urllib.parse.urlencode({"search_query": q, "sp": "EgIQAQ=="})
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "Accept-Language": "en-SG,en;q=0.9", "Cookie": "PREF=f2=8000000&hl=en&gl=SG; CONSENT=YES+1"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        page = r.read().decode("utf-8", "replace")
+    m = re.search(r"(?:var ytInitialData|window\[\"ytInitialData\"\])\s*=\s*(\{.*?\});\s*</script>", page, re.S)
+    if not m:
+        raise ValueError("YouTube page format changed")
+    out = []
+    for v in _video_renderers(json.loads(m.group(1)), []):
+        length = _text(v.get("lengthText"))
+        if not v.get("videoId") or not length:                     # no length = a live stream or a premiere
+            continue
+        thumbs = (v.get("thumbnail") or {}).get("thumbnails") or [{}]
+        out.append({"id": v["videoId"], "title": _text(v.get("title")), "channel": _text(v.get("ownerText")),
+                    "length": length, "seconds": _secs(length), "thumb": thumbs[-1].get("url", "")})
+    return out
+
+
+def youtube_api_search(q, key):
+    base = "https://www.googleapis.com/youtube/v3/"
+    d = get_json(base + "search?" + urllib.parse.urlencode({"part": "snippet", "type": "video", "q": q, "maxResults": 10,
+                 "safeSearch": "strict", "videoEmbeddable": "true", "relevanceLanguage": "en", "regionCode": "SG", "key": key}))
+    ids = [i["id"]["videoId"] for i in d.get("items", []) if i.get("id", {}).get("videoId")]
+    if not ids:
+        return []
+    info = get_json(base + "videos?" + urllib.parse.urlencode({"part": "snippet,contentDetails", "id": ",".join(ids), "key": key}))
+    out = []
+    for v in info.get("items", []):
+        sn, secs = v.get("snippet", {}), _iso_secs(v.get("contentDetails", {}).get("duration"))
+        if sn.get("liveBroadcastContent", "none") != "none" or not secs:
+            continue
+        out.append({"id": v["id"], "title": sn.get("title", ""), "channel": sn.get("channelTitle", ""),
+                    "length": time.strftime("%M:%S" if secs < 3600 else "%H:%M:%S", time.gmtime(secs)), "seconds": secs,
+                    "thumb": ((sn.get("thumbnails") or {}).get("medium") or {}).get("url", "")})
+    return out
+
+
+def videos(q):
+    cfg = settings()
+    errors = []
+    found = []
+    if cfg.get("youtube"):
+        try:
+            found = youtube_api_search(q, cfg["youtube"])
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"youtube api: {e}")
+    if not found:
+        try:
+            found = youtube_page_search(q)
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"youtube: {e}")
+    keep = [v for v in found if 0 < v["seconds"] <= 20 * 60] or [v for v in found if v["seconds"]]   # short ones first
+    return {"query": q, "videos": keep[:6], "source": "youtube api" if cfg.get("youtube") and not errors else "youtube",
+            "errors": errors}
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=HERE, **kw)
@@ -337,6 +441,13 @@ class Handler(SimpleHTTPRequestHandler):
             out["ms"] = int((time.time() - t) * 1000)
             sys.stderr.write(f"search {q!r}: {len(out['results'])} results via {out['source'] or 'nothing'} "
                              f"in {out['ms']} ms {'; '.join(out['errors'])}\n")
+            return self.send_json(out)
+        if u.path == "/api/videos":
+            q = (urllib.parse.parse_qs(u.query).get("q") or [""])[0].strip()[:200]
+            if not q:
+                return self.send_json({"error": "missing q"}, 400)
+            out = videos(q)
+            sys.stderr.write(f"videos {q!r}: {len(out['videos'])} {'; '.join(out['errors'])}\n")
             return self.send_json(out)
         if u.path == "/api/status":
             return self.send_json({"server": "kiosk-server", "search": "ollama" if settings()["key"] else "wikipedia"})

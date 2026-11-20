@@ -358,6 +358,19 @@ body.has-panel .panel { transform: translateX(0); }
 #parcelBox { display: flex; flex-direction: column; gap: 14px; }
 #parcelBox[hidden] { display: none; }
 .pc-text { font-size: clamp(16px, 1.5vw, 20px); font-weight: 700; }
+/* video player */
+#videoBox { display: flex; flex-direction: column; gap: 12px; }
+#videoBox[hidden] { display: none; }
+.vb-frame { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 18px; overflow: hidden; background: #000; }
+.vb-frame iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.vb-title { font-weight: 800; font-size: clamp(16px, 1.5vw, 20px); line-height: 1.3; }
+.vb-title span { display: block; font-weight: 600; font-size: 13px; opacity: 0.65; margin-top: 2px; }
+.vb-btns { justify-content: flex-start; }
+.vb-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.vb-list button { display: flex; flex-direction: column; gap: 6px; text-align: left; background: var(--card-2); border: 2px solid var(--line);
+  border-radius: 14px; padding: 6px; font-size: 13px; font-weight: 700; line-height: 1.25; color: var(--card-text); }
+.vb-list button.on { border-color: var(--speak); }
+.vb-list img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 9px; background: #000; }
 /* internet answer card */
 #webBox { display: flex; flex-direction: column; gap: 14px; }
 #webBox[hidden] { display: none; }
@@ -546,7 +559,14 @@ body.setup .map-wrap { cursor: crosshair; }
   <div id="webBox" hidden>
     <img class="wb-img" id="wbImg" alt="" hidden>
     <div class="wb-answer" id="wbAnswer"></div>
+    <div class="chips vb-btns" id="wbBtns"></div>
     <div id="wbSources"></div>
+  </div>
+  <div id="videoBox" hidden>
+    <div class="vb-frame"><iframe id="vbFrame" title="Video" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+    <div class="vb-title" id="vbTitle"></div>
+    <div class="chips vb-btns" id="vbBtns"></div>
+    <div class="vb-list" id="vbList"></div>
   </div>
   <div id="faceBox" hidden>
     <p class="pc-text" id="fcText"></p>
@@ -645,6 +665,7 @@ const CONFIG = {
   wakeAliases: ["cube bot", "q bot", "cue bot", "queue bot", "cute bot", "cool bot", "cubit", "qubit", "kubo", "kubot",
                 "cubo", "cuba", "cube", "cubert", "kubert"],    // what speech recognition sometimes hears instead of the name
 
+  videos: true,                     // play YouTube videos on request ("show me a video about volcanoes"). Restricted Mode is on.
   faceMemory: true,                 // remember faces of people who say "remember me" (and agree), and greet them by name.
                                     // Only numbers describing the face are kept, in kiosk-settings.json on this PC. No photos.
   faceMatch: 0.5,                   // how close a face must be to count as the same person (lower = stricter)
@@ -1085,7 +1106,7 @@ function renderPeopleInto(box, list, onPick) {
 /* ---------------- Panel ---------------- */
 function openPanel({ mode, loc = null, person = null, people = null, title = null }) {
   const isPeople = mode === "people";
-  stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true; $("faceBox").hidden = true; $("webBox").hidden = true;
+  stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true; $("faceBox").hidden = true; $("webBox").hidden = true; videoStop();
   FACE.ask = null;
   guideOffer = null; onScreenPerson = null; $("personActions").hidden = true; $("personActions").innerHTML = "";
   panelTarget = loc ? { ...loc, person } : null;
@@ -1204,6 +1225,7 @@ function closePanel() {
   $("voiceBox").hidden = true;
   $("faceBox").hidden = true;
   $("webBox").hidden = true;
+  videoStop();
   FACE.ask = null;
   stop3D();
   stopRouteTour();
@@ -3757,6 +3779,7 @@ ${CONFIG.internet ? `4. They ask about the world outside this office: news, weat
    what a word, phrase or saying means, or any general question you can't answer for sure. The answer is also shown on screen.
    Reply with exactly one line: SEARCH: <short web search query>
    Never search for things about ${CONFIG.companyName}, this office or its people: use FACTS for those.
+   If they want to WATCH something (a video, a clip, a song, "show me how..."), reply with exactly one line: VIDEO: <short YouTube search>
 ` : ""}${CONFIG.internet ? 5 : 4}. Anything else: answer in 1 to 3 short, ${cheeky() ? "playful, cheeky" : "warm"} sentences, using FACTS and NOW. If they don't cover it, say you're
    not sure and suggest asking a staff member. Never make things up. No lists, no markdown, no emojis.
 Follow-up questions ("how do I get there?", "who sits there?", "and the toilet?") refer to ON SCREEN and the conversation so far.
@@ -3791,7 +3814,7 @@ function examples() {
   ex.push(`"Give me a shout in half an hour to call my boss" -> DO: remind me in 30 minutes to call my boss`);
   if (CONFIG.internet) ex.push(`"Will I need an umbrella later?" -> SEARCH: Singapore weather today`,
     `"Why is the sky blue?" -> SEARCH: why is the sky blue`, `"What does serendipity mean?" -> SEARCH: serendipity meaning`,
-    `"What's a black hole?" -> SEARCH: black hole`);
+    `"What's a black hole?" -> SEARCH: black hole`, `"Can I see how a volcano erupts?" -> VIDEO: how a volcano erupts`);
   ex.push(`"What does this company do?" -> (a short friendly answer from FACTS)`);
   return "EXAMPLES:\n" + ex.map(e => "- " + e).join("\n") + "\n";
 }
@@ -3839,6 +3862,12 @@ function webShow(question, results) {
   if (src) img.src = src;
   $("wbAnswer").textContent = "Looking it up…";
   $("wbAnswer").classList.add("wait");
+  const btns = $("wbBtns"); btns.innerHTML = "";
+  if (CONFIG.videos !== false) {
+    const v = document.createElement("button"); v.type = "button"; v.className = "chip"; v.textContent = "▶ Watch a video about this";
+    v.addEventListener("click", () => { activity(); openVideo(NET.query || question); });
+    btns.appendChild(v);
+  }
   const box = $("wbSources"); box.innerHTML = "";
   for (const r of results.filter(r => r.content).slice(0, 3)) {
     const d = document.createElement("div"); d.className = "wb-src";
@@ -3854,6 +3883,77 @@ function webAnswer(text) {
   if ($("webBox").hidden) return;
   $("wbAnswer").textContent = text || "I couldn't find a clear answer to that.";
   $("wbAnswer").classList.remove("wait");
+}
+
+/* ---------------- Videos (YouTube, through kiosk-server.py with Restricted Mode on) ----------------
+   "Show me a video about volcanoes", "play baby shark on YouTube", or "Watch a video" on an internet answer.
+   The kiosk stays on the video until it ends (no going back to the welcome screen halfway). */
+const VID = { list: [], i: 0, until: 0, timer: 0, query: "" };
+function videoStop() {
+  const f = $("vbFrame");
+  if (f && f.src) f.removeAttribute("src");                     // stops the sound too
+  $("videoBox").hidden = true;
+  VID.until = 0;
+}
+function videoPlay(i) {
+  const v = VID.list[i];
+  if (!v) return;
+  VID.i = i;
+  $("vbFrame").src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.id)}?autoplay=1&rel=0&modestbranding=1&playsinline=1&iv_load_policy=3`;
+  $("vbTitle").innerHTML = "";
+  $("vbTitle").append(v.title, Object.assign(document.createElement("span"), { textContent: [v.channel, v.length].filter(Boolean).join(" · ") }));
+  [...$("vbList").children].forEach((b, k) => b.classList.toggle("on", k === i));
+  VID.until = Date.now() + Math.min((v.seconds || 600) + 20, 25 * 60) * 1000;
+  activity();
+}
+async function openVideo(query, quiet) {
+  query = String(query || "").trim().slice(0, 120);
+  if (!query) return;
+  if (CONFIG.videos === false) { say("Sorry, videos are switched off on this kiosk."); return; }
+  if (!quiet) say(cheeky() ? "Ooh, movie time! Let me find one." : "Let me find a video.");
+  let d = null;
+  try {
+    const r = await fetch("/api/videos?q=" + encodeURIComponent(query), { signal: AbortSignal.timeout(15000) });
+    if (r.status === 404 || r.status === 501) { say("Videos need the new kiosk server. Please restart Cubot after the update."); return; }
+    d = await r.json();
+  } catch (e) { d = null; }
+  if (!d || !d.videos || !d.videos.length) { say("Sorry, I couldn't find a video for that right now."); return; }
+  VID.list = d.videos; VID.query = query;
+  showOnly("videoBox", "Video: " + (query.length > 50 ? query.slice(0, 47) + "…" : query));
+  document.body.classList.remove("compact");
+  const btns = $("vbBtns"); btns.innerHTML = "";
+  const add = (label, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = label;
+    b.addEventListener("click", () => { activity(); fn(); }); btns.appendChild(b); };
+  if (VID.list.length > 1) add("Next video", () => videoPlay((VID.i + 1) % VID.list.length));
+  add("Stop video", () => { closePanel(); say("Okay, video stopped."); });
+  const list = $("vbList"); list.innerHTML = "";
+  VID.list.forEach((v, k) => {
+    const b = document.createElement("button"); b.type = "button";
+    const im = document.createElement("img"); im.src = v.thumb || `https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/mqdefault.jpg`; im.alt = ""; im.loading = "lazy";
+    b.append(im, (v.title || "").slice(0, 70));
+    b.addEventListener("click", () => videoPlay(k));
+    list.appendChild(b);
+  });
+  const first = VID.list[0];
+  say(cheeky() ? `Here's one: ${first.title}. Grab some popcorn!` : `Here's a video: ${first.title}.`, `▶ ${first.title}`);
+  setTimeout(() => { if (!$("videoBox").hidden && VID.list[0] === first) videoPlay(0); }, 2200);   // let me finish talking first
+  clearInterval(VID.timer);
+  VID.timer = setInterval(() => {                                  // keep the video on screen while it plays
+    if ($("videoBox").hidden) { clearInterval(VID.timer); return; }
+    if (Date.now() < VID.until) activity();
+  }, 10e3);
+}
+/* "show me a video about volcanoes" -> "volcanoes"; null when it isn't a video request */
+function videoAsk(text) {
+  const t = text.trim();
+  if (!/\b(videos?|youtube|clips?|vlog)\b/i.test(t)) return null;
+  if (!/\b(show|play|find|search|watch|open|put on|look up|got|have|any|see|want|give)\b|^\s*(a |an |some )?(videos?|youtube|clips?)\b/i.test(t)) return null;
+  const q = t.replace(/^\s*(hey\s+\w+[,!]?\s*)?(can|could|would|will)\s+you\s+(please\s+)?/i, "")
+    .replace(/\b(please|for me|now|thanks?|thank you|on youtube|from youtube|in youtube|youtube)\b/gi, " ")
+    .replace(/^\s*(i\s+(want|would like|wanna)\s+(to\s+)?(see|watch)|let me (see|watch)|show me|show|play me|play|find me|find|search( for)?|look up|put on|open|watch|give me|do you have|have you got|got)\s+/i, "")
+    .replace(/^\s*(a|an|the|some|any)?\s*(short\s+|funny\s+|good\s+|cool\s+)?(youtube\s+)?(videos?|clips?|vlogs?)\s*(of|about|on|for|showing|explaining|that shows|that explains|with)?\s*/i, "")
+    .replace(/\s+(videos?|clips?)\s*$/i, "").replace(/[?.!]+$/, "").replace(/^\s*(a|an|the|some)\s+/i, "").replace(/\s{2,}/g, " ").trim();
+  return q.length >= 2 ? q : "";
 }
 
 /* The AI picked a place or a person: show the route like a normal search */
@@ -3922,6 +4022,19 @@ async function handleUserText(text) {
     return;
   }
 
+  // Videos: "show me a video about volcanoes", "stop the video"
+  if (!$("videoBox").hidden && /^\s*(please\s+)?(stop|close|end|pause|turn off|switch off)\b.*\b(video|it|this|that)?\b/i.test(text) && text.split(/\s+/).length <= 5) {
+    closePanel(); say("Okay, video stopped."); $("you").textContent = quote; return;
+  }
+  if (!$("videoBox").hidden && /^\s*(next|another|different|skip)( one| video)?\b/i.test(text)) { videoPlay((VID.i + 1) % VID.list.length); $("you").textContent = quote; return; }
+  const vq = CONFIG.videos === false ? null : videoAsk(text);
+  if (vq !== null) {
+    if (vq) openVideo(vq);
+    else if (NET.query && Date.now() - NET.at < 5 * 60e3) openVideo(NET.query);     // "show me a video" after a question
+    else say("Sure! What would you like a video about?");
+    $("you").textContent = quote; return;
+  }
+
   // Face memory: "remember me", "my name is ...", "forget me", "who am I?" (and the answers to its questions)
   if (faceCommand(text)) { $("you").textContent = quote; return; }
 
@@ -3971,7 +4084,7 @@ async function handleUserText(text) {
   streamDone = false;
   const T = { buffer: "", shown: "" };          // text waiting to be spoken / text already on screen
   const t0 = performance.now(); let tFirst = 0;
-  const ROUTE = /^[\s*"'`]*(GO|PERSON|SEARCH|DO)\s*:\s*/i;
+  const ROUTE = /^[\s*"'`]*(GO|PERSON|SEARCH|DO|VIDEO)\s*:\s*/i;
   const flush = final => {
     if (myTurn !== turnSeq) { T.buffer = ""; return; }           // interrupted ("Hey Cubot…"): say nothing more
     let m;
@@ -4060,8 +4173,12 @@ async function handleUserText(text) {
     if (mode === "say" && !sayStarted) { startSay(); T.buffer = visible.trim() ? visible : documentAnswer(text); }
     if (mode === "route") {
       routeLine = visible.replace(/[*`"]/g, "").trim().split("\n")[0];
-      const m = routeLine.match(/^(GO|PERSON|SEARCH|DO)\s*:\s*(.+)$/i);
+      const m = routeLine.match(/^(GO|PERSON|SEARCH|DO|VIDEO)\s*:\s*(.+)$/i);
       const kind = m ? m[1].toUpperCase() : "";
+      if (kind === "VIDEO" && CONFIG.internet) {
+        timed(); $("you").textContent = quote; remember("VIDEO: " + m[2]);
+        openVideo(m[2]); return;
+      }
       if (kind === "DO") {
         timed();
         if (tryActions(m[2], quote)) { remember("DO: " + m[2]); return; }

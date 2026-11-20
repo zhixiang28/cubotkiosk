@@ -1,6 +1,7 @@
 {
-  "version": "2026.11.20.14",
+  "version": "2026.11.20.15",
   "notes": [
+    "Videos: 'show me a video about ...' plays YouTube (Restricted Mode) on screen; 'Watch a video' on internet answers",
     "Internet answers shown on screen: picture, answer and sources; searches science questions and word/phrase meanings (dictionary)",
     "Handshake: game and live reactions removed; Cubot still reads the data for reports (today's numbers, 5 pm summary)",
     "Face memory: say 'remember me' and Cubot learns your face (with permission) and greets you by name; 'forget me' deletes it",
