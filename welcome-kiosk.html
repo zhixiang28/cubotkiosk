@@ -2944,7 +2944,7 @@ const THINKY = /^\s*(<think>|(okay|ok|alright|hmm+)\b[,.!]?\s*(so|let|the|i|firs
 function noteThinkOnly() {
   if (AI.thinkOnly) return;
   AI.thinkOnly = true;
-  setStatus(`The AI model "${CONFIG.model}" thinks out loud before answering, which is slow. Run the latest Cubot-Update.bat to switch to a faster model.`, "ai");
+  setStatus(`The AI model "${CONFIG.model}" thinks out loud before answering, which is slow. Use "model": "auto" in kiosk-config.json, or "qwen3:4b-instruct".`, "ai");
 }
 function systemPrompt(question) {
   const all = INFO.chunks;
