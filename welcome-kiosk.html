@@ -2750,9 +2750,20 @@ function localVoice() {
   const en = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en") && v.localService);
   return en.find(v => /zira|female|hazel|susan/i.test(v.name)) || en[0] || null;
 }
+/* What is read out loud: no emojis, emoticons like :) or ;-P, or markdown stars (they stay on screen) */
+function speakable(text) {
+  return String(text || "")
+    .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\u{1F3FB}-\u{1F3FF}\uFE0F\u200D\u20E3]/gu, "")
+    .replace(/(^|\s)[:;=8xX][-'^o]?[)(DPpOo3|\/\\*\]\[]+(?=\s|$|[.,!?])/g, "$1")
+    .replace(/(^|\s)<3+(?=\s|$)/g, "$1")
+    .replace(/[*_~`#]+/g, "")
+    .replace(/\s+([.,!?])/g, "$1")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
 function enqueueSpeech(text) {
-  text = text.trim();
-  if (!text) return;
+  text = speakable(text);
+  if (!text || !/[\p{L}\p{N}]/u.test(text)) return;
   speakQueue.push(text);
   if (!speakingNow) {
     speakingNow = true;
