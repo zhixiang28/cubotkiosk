@@ -440,17 +440,7 @@ body.mood-wow .mouth { width: min(4vw, 6vh); height: min(4vw, 6vh); }
 body.mood-meh .eye { height: min(7vw, 10vh); border-radius: 25% 25% 999px 999px; }
 body.mood-meh .mouth { width: min(3vw, 4vh); }
 .hs-toast { position: fixed; left: 2vw; bottom: 5vh; z-index: 7; background: var(--card-2); color: var(--card-text); border: 2px solid var(--line); border-radius: 14px; padding: 10px 16px; font-weight: 700; font-size: clamp(14px, 1.4vw, 18px); max-width: 44vw; }
-.hs-toast[hidden], .hs-meter[hidden] { display: none; }
-.hs-meter { position: fixed; right: 3vw; top: 50%; transform: translateY(-50%); z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 12px;
-  background: var(--card-2); color: var(--card-text); border: 2px solid var(--line); border-radius: 20px; padding: 16px 18px; width: min(220px, 30vw); }
-.hs-title { font-weight: 800; font-size: clamp(16px, 1.6vw, 22px); }
-.hs-bar { position: relative; width: 70px; height: 46vh; border-radius: 14px; background: var(--bg); margin-right: 64px; }
-.hs-zones div { position: absolute; left: 0; right: 0; }
-.hs-zones span { position: absolute; left: 80px; bottom: 2px; white-space: nowrap; font-size: 13px; color: var(--muted); }
-.hs-fill { position: absolute; left: 14px; right: 14px; bottom: 0; height: 0; border-radius: 8px; background: var(--speak); transition: height 0.35s ease; }
-.hs-peak { position: absolute; left: 4px; right: 4px; height: 3px; background: var(--card-text); bottom: 0; transition: bottom 0.35s ease; }
-.hs-num { font-size: clamp(32px, 4vw, 54px); font-weight: 900; font-variant-numeric: tabular-nums; }
-.hs-state { color: var(--muted); font-size: 14px; text-align: center; }
+.hs-toast[hidden] { display: none; }
 .ms-card, .live-card { position: fixed; left: 2vw; top: 13vh; z-index: 7; background: var(--card-2); color: var(--card-text);
   border: 2px solid var(--line); border-radius: 20px; padding: 14px 16px; width: min(330px, 22vw); display: flex; flex-direction: column; gap: 8px; }
 .ms-card[hidden], .live-card[hidden] { display: none; }
@@ -577,13 +567,6 @@ body.setup .map-wrap { cursor: crosshair; }
 
 <div class="big-count" id="bigCount" hidden><span id="bigNum"></span><button type="button" id="bigStop" class="chip">Stop countdown</button></div>
 <div class="hs-toast" id="hsToast" hidden></div>
-<div class="hs-meter" id="hsMeter" hidden>
-  <div class="hs-title" id="hsTitle">Handshake challenge</div>
-  <div class="hs-bar"><div class="hs-zones" id="hsZones"></div><div class="hs-fill" id="hsFill"></div><div class="hs-peak" id="hsPeak"></div></div>
-  <div class="hs-num" id="hsNum">0%</div>
-  <div class="hs-state" id="hsState">Waiting for a handshake…</div>
-  <button type="button" class="chip" onclick="hsStop('OK, challenge cancelled.')">Cancel</button>
-</div>
 <div class="ms-card" id="msCard" hidden>
   <div class="ms-title" id="msTitle"></div>
   <div class="ms-text" id="msText"></div>
@@ -654,15 +637,10 @@ const CONFIG = {
                                     // webcam, 0.1 about 1 m; bigger = closer. Press F9 on the kiosk to see your face size live
   greetAfterAwaySec: 20,            // greet again only after nobody has been close for this long
 
-  handshake: {                      // the handshake hand (ESP32-C3) in the Makerspace, through Supabase
-    enabled: true,
+  handshake: {                      // the handshake hand (ESP32-C3) in the Makerspace: Cubot reads its data for reports only
+    enabled: true,                  // ("how many handshakes today?", the 5 pm summary). No live reactions, no game.
     device: "handshake-1",
-    place: "Makerspace",
-    nearby: true,                   // the handshake is in the Makerspace = the Team T office, the same room as Cubot,
-                                    // so she reacts out loud. false if it ever moves away from her
-    react: "auto",                  // "auto" = comment out loud only when someone is at the kiosk, "always", or "off"
-    button: true,                   // a "Handshake challenge" button on the welcome screen
-    playOnChallenge: null           // sound number the handshake plays when a challenge starts (e.g. 1), null = none
+    place: "Makerspace"
   },
   extraAliases: {                   // more words for places in office-info.txt (added to its own list)
     "Team T office": ["makerspace", "maker space", "makers space", "the makerspace"]
@@ -2868,7 +2846,6 @@ function renderDiag() {
     `<b>Camera</b>    ${SEE.on ? (SEE.paused ? "lent to the parcel camera" : "ON, checked " + ago(SEE.lastFrame)) : "OFF: " + (statusNotes.see || (CONFIG.greetPeople ? "starting…" : "greetPeople is false"))}`,
     `          biggest face: ${SEE.lastWidth ? SEE.lastWidth.toFixed(3) : "none"}  (greets at ${CONFIG.greetFaceSize} or bigger)`,
     `          last greeting: ${ago(SEE.lastGreet)}`,
-    `<b>Handshake</b> ${HS.ok ? (HS.live ? "live connection (instant)" : "checking every 2 s (live connection not working)") : "not connected"}${HS.lastVerdict ? `, last result ${ago(HS.lastVerdict.at)}` : ""}`,
     `<b>PC</b>        ${HW.ramGB ? `${HW.ramGB} GB memory, ${HW.gpus.length ? HW.gpus.map(g => `${esc(g.name)} ${g.vramGB} GB`).join(", ") : "no NVIDIA graphics card found"}${HW.cpu ? ", " + esc(HW.cpu) : ""}` : "not measured (needs kiosk-server.py)"}`,
     `<b>Version</b>   ${(window.KIOSK_VERSION || {}).sha ? `${esc(window.KIOSK_VERSION.version || "")} ${esc(window.KIOSK_VERSION.sha.slice(0, 7))}, installed ${esc(window.KIOSK_VERSION.installed || "?")}` : "not from GitHub yet"}${updateWaiting ? " (new version waiting, reloads when nobody is here)" : ""}`,
     `<b>AI</b>        ${CONFIG.useAI ? `${esc(CONFIG.model)}${HW.why ? ` (${esc(HW.why)})` : ""}${AI.thinkOnly ? " (thinks first: slow)" : ""}, ${AI.gpu || "checking…"}${AI.warmMs ? `, warmed up in ${(AI.warmMs / 1000).toFixed(1)} s` : ""}` : "off (useAI is false)"}`,
@@ -2901,7 +2878,6 @@ function buildChips() {
   if (INFO.people.length) add("Find a person", ICON.person, () => { activity(); $("you").textContent = ""; peopleGuide = false; openPanel({ mode: "people" }); say("Who are you looking for? Tap their name, or type it below."); }, true);
   add("I have a delivery", ICON.box, () => { activity(); $("you").textContent = ""; openParcel(); }, true);
   if (lightsReady() && CONFIG.lights.button) add("Lights", ICON.bulb, () => { activity(); $("you").textContent = ""; openLights(); });
-  if (CONFIG.handshake && CONFIG.handshake.enabled !== false && CONFIG.handshake.button) add("Handshake challenge", ICON.hand, () => { activity(); $("you").textContent = ""; hsChallenge(); });
   for (const q of CONFIG.quickQuestions) add(q.label, ICON.chat, () => { stopTalking(); handleUserText(q.ask); });
 }
 
@@ -3347,12 +3323,10 @@ function tryActions(text, quote) {
   const keep = () => { $("you").textContent = quote; return true; };
   const TIMERISH = /\b(timers?|count ?downs?|countdowns?|reminders?|alarms?|schedules?)\b/;
 
-  // handshake: "handshake challenge", "test my grip", "how many handshakes today?", "how did I do?"
+  // handshake data: "how many handshakes today?", "what's the strongest grip?"
   const HSW = /\b(hand ?shakes?|shake (my |a |the |your )?hands?|grip|handshaking)\b/;
-  if (HS.challenge && /\b(cancel|stop|never ?mind|quit|end)\b/.test(t)) { hsStop("OK, challenge cancelled."); return keep(); }
-  if (HSW.test(t) && /\b(duel|versus|vs|against|two players?|2 players?|1v1|one on one)\b/.test(t)) { hsChallenge(true); return keep(); }
-  if (HSW.test(t) && /\b(challenge|game|test|battle|contest|play|try|compete|competition)\b/.test(t) || /\b(test|check|measure) my (grip|handshake)\b|\bhow strong is my (grip|handshake)\b/.test(t)) {
-    hsChallenge(); return keep();
+  if (HSW.test(t) && /\b(challenge|game|duel|battle|contest|play|compete|competition)\b/.test(t)) {
+    say(`The handshake game is switched off. You can still shake the hand in the ${hsConf().place}, and ask me how many handshakes there were today!`); return keep();
   }
 
   // Makerspace: tools out, light timer, "where's the big plier?", "do we have hex screws?"
@@ -3378,17 +3352,13 @@ function tryActions(text, quote) {
   }
   if (HSW.test(t) && /\b(how many|today|record|best|strongest|top|stats?|statistics|score|leaderboard|average|most)\b/.test(t)) {
     if (!HS.ok || !HS.stats) say("Sorry, I can't reach the handshake right now.");
-    else if (!HS.stats.shakes) say(`Nobody has shaken hands with the ${hsConf().place} handshake today yet. Want to be the first? Say "handshake challenge"!`);
+    else if (!HS.stats.shakes) say(`Nobody has shaken hands with the ${hsConf().place} handshake today yet.`);
     else {
       const s = HS.stats;
       say(`${s.shakes} handshake${s.shakes === 1 ? "" : "s"} so far today. The strongest grip was ${s.best} percent, and the average is ${s.avg} percent. ${s.by.nice} were nice, ${s.by.strong} strong, ${s.by.too_soft} too soft and ${s.by.too_hard} too hard.`,
         `Handshakes today: ${s.shakes} · strongest ${s.best}% · average ${s.avg}% · nice ${s.by.nice}, strong ${s.by.strong}, too soft ${s.by.too_soft}, too hard ${s.by.too_hard}`);
     }
     return keep();
-  }
-  if (/\bhow did i do\b|\bmy (handshake )?(score|result)\b/.test(t) && HS.lastVerdict && Date.now() - HS.lastVerdict.at < 10 * 60e3) {
-    const v = HS.lastVerdict; mood(HS_MOOD[v.verdict]);
-    say(`Your last handshake was ${HS_NAME[v.verdict]}, with a ${v.force} percent grip. ${pick(HS_LINES[v.verdict] || HS_LINES.nice)}`); return keep();
   }
 
   // cancel: "cancel the timer", "stop the countdown", "never mind the light timer"
@@ -3468,19 +3438,11 @@ function tryActions(text, quote) {
   return false;
 }
 
-/* ---------------- Handshake (the Makerspace handshake hand) ----------------
-   The handshake device (ESP32-C3, force sensor + ultrasonic) writes its events to Supabase. Cubot watches them:
-   - reacts with a face and a comment when someone shakes its hand ("Ouch! My circuits!")
-   - "handshake challenge": a live grip meter on screen, a verdict and a score, and today's record
-   - knows today's handshake stats, so "how many handshakes today?" or "what's the strongest grip?" work */
-const HS = { ok: false, last: 0, busy: false, cfg: null, stats: null, statsAt: 0, lastVerdict: null, challenge: null, meterTimer: 0, errors: 0, live: false, ws: null, polled: 0 };
-const HS_LINES = {
-  too_soft: ["That was a bit of a limp fish! Give it a real squeeze next time.", "So gentle! Are you shy? Try a firmer grip.", "Hmm, a feather handshake. Squeeze like you mean it!"],
-  nice: ["Perfect handshake! Firm and friendly, ten out of ten.", "Now that is a proper handshake. Very professional!", "Lovely grip. You'd ace any job interview!"],
-  strong: ["Ooh, strong grip! You mean business.", "Solid handshake! Confident, I like it.", "Strong one! Somebody's been lifting."],
-  too_hard: ["Ouch! My circuits! Easy there, strong one.", "Whoa, a crusher! Maybe save that for opening jars.", "Help! I think you bent my sensor!"]
-};
-const HS_MOOD = { too_soft: "meh", nice: "happy", strong: "wow", too_hard: "ouch" };
+/* ---------------- Handshake data (the Makerspace handshake hand) ----------------
+   The handshake device (ESP32-C3, force sensor + ultrasonic) writes its events to Supabase. Cubot only reads them for
+   reports: today's numbers every few minutes, for "how many handshakes today?", "what's the strongest grip?", the AI
+   and the 5 pm summary. (No live reactions and no handshake game.) */
+const HS = { ok: false, stats: null, statsAt: 0, lastVerdict: null };
 const HS_NAME = { too_soft: "too soft", nice: "nice", strong: "strong", too_hard: "too hard" };
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const hsConf = () => { const c = lightsCfg(), h = CONFIG.handshake || {}; return { url: (h.url || c.url || "").replace(/\/$/, ""), key: h.key || c.key, dev: h.device || "handshake-1", place: h.place || "Makerspace" }; };
@@ -3499,76 +3461,8 @@ function mood(m, ms = 2600) {
 }
 async function hsInit() {
   if (!CONFIG.handshake || CONFIG.handshake.enabled === false || !hsConf().url) return;
-  const c = hsConf();
-  try {
-    const [rows, set] = await Promise.all([
-      hsGet(`handshake_events?device_id=eq.${encodeURIComponent(c.dev)}&select=id&order=id.desc&limit=1`),
-      hsGet(`handshake_settings?device_id=eq.${encodeURIComponent(c.dev)}&select=soft_max,nice_max,strong_max,enabled`)
-    ]);
-    HS.last = rows[0] ? rows[0].id : 0;
-    HS.cfg = set[0] || { soft_max: 30, nice_max: 60, strong_max: 95 };
-    HS.ok = true;
-    hsStats();
-  } catch (e) { setTimeout(hsInit, 60e3); return; }
-  hsLive();
-  // checking every 2 s is the backup: while the live connection works, only every 15 s (3 s in a challenge)
-  (function loop() {
-    const due = !HS.live || Date.now() - HS.polled > (HS.challenge ? 3000 : 15000);
-    (due ? hsPoll() : Promise.resolve()).finally(() => setTimeout(loop, HS.challenge ? 700 : 2000));
-  })();
-  setInterval(hsStats, 120e3);
-}
-/* Live connection (Supabase Realtime): a new handshake row arrives here the moment it is saved, instead of
-   waiting for the next check. If it drops, the checks above carry on and it reconnects by itself. */
-function hsLive(wait = 2000) {
-  const c = hsConf();
-  if (!window.WebSocket || !/^https:\/\//.test(c.url) || (CONFIG.handshake || {}).live === false) return;
-  let ws, beat = 0, ref = 1, opened = Date.now();
-  const send = (topic, event, payload) => { try { ws.send(JSON.stringify({ topic, event, payload, ref: String(++ref), join_ref: topic === "phoenix" ? undefined : "1" })); } catch (e) {} };
-  try { ws = new WebSocket(c.url.replace(/^https/, "wss") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(c.key) + "&vsn=1.0.0"); }
-  catch (e) { setTimeout(() => hsLive(Math.min(wait * 2, 60e3)), wait); return; }
-  HS.ws = ws;
-  ws.onopen = () => {
-    const payload = { config: { broadcast: { self: false }, presence: { key: "" },
-      postgres_changes: [{ event: "INSERT", schema: "public", table: "handshake_events", filter: "device_id=eq." + c.dev }] } };
-    if (/^eyJ/.test(c.key)) payload.access_token = c.key;          // old-style keys are tokens; new publishable keys are not
-    send("realtime:cubot-handshake", "phx_join", payload);
-    beat = setInterval(() => send("phoenix", "heartbeat", {}), 25e3);
-  };
-  ws.onmessage = m => {
-    let d; try { d = JSON.parse(m.data); } catch (e) { return; }
-    if (d.event === "phx_reply" && d.topic === "realtime:cubot-handshake") {
-      const ok = d.payload && d.payload.status === "ok";
-      if (!ok) { console.warn("Handshake live connection refused:", d.payload); try { ws.close(); } catch (e) {} return; }
-      if (d.payload.response && d.payload.response.postgres_changes) { HS.live = true; hsPoll(); }   // catch anything from before
-    }
-    if (d.event === "system" && d.payload && d.payload.status === "error") { console.warn("Handshake live:", d.payload.message); HS.live = false; }
-    if (d.event === "postgres_changes") {
-      const r = d.payload && d.payload.data && d.payload.data.record;
-      if (!r || r.device_id !== c.dev || !(r.id > HS.last)) return;
-      HS.last = r.id; HS.ok = true; HS.errors = 0;
-      hsEvent(r);
-    }
-  };
-  ws.onclose = () => {
-    clearInterval(beat);
-    HS.live = false;
-    if (HS.ws !== ws) return;
-    const next = Date.now() - opened > 60e3 ? 2000 : Math.min(wait * 2, 60e3);   // it worked for a while: retry soon
-    setTimeout(() => hsLive(next), next);
-  };
-  ws.onerror = () => { try { ws.close(); } catch (e) {} };
-}
-async function hsPoll() {
-  if (HS.busy) return;
-  HS.busy = true;
-  HS.polled = Date.now();
-  try {
-    const rows = await hsGet(`handshake_events?device_id=eq.${encodeURIComponent(hsConf().dev)}&id=gt.${HS.last}&order=id.asc&limit=25`);
-    for (const e of rows) { if (e.id <= HS.last) continue; HS.last = e.id; hsEvent(e); }   // the live connection may have shown it already
-    HS.ok = true; HS.errors = 0;
-  } catch (e) { if (++HS.errors > 3) HS.ok = false; }
-  finally { HS.busy = false; }
+  await hsStats();
+  setInterval(hsStats, 5 * 60e3);
 }
 /* today's numbers, for "how many handshakes today?" and for the AI */
 async function hsStats() {
@@ -3581,137 +3475,23 @@ async function hsStats() {
     HS.stats = { day: day.getTime(), shakes: v.length, visits: rows.length - v.length, best: v.reduce((m, r) => Math.max(m, r.force_pct), 0),
       avg: v.length ? Math.round(v.reduce((a, r) => a + r.force_pct, 0) / v.length) : 0, by, top: v.map(r => r.force_pct).sort((a, b) => b - a).slice(0, 5) };
     HS.statsAt = Date.now();
+    HS.ok = true;
     const lastV = [...v].pop();
-    if (lastV && !HS.lastVerdict) HS.lastVerdict = { verdict: lastV.verdict, force: lastV.force_pct, at: Date.parse(lastV.created_at) };
-  } catch (e) {}
+    if (lastV) HS.lastVerdict = { verdict: lastV.verdict, force: lastV.force_pct, at: Date.parse(lastV.created_at) };
+  } catch (e) { HS.ok = false; }
 }
 function hsText() {
   if (!HS.ok || !HS.stats) return "not connected";
   const s = HS.stats;
-  if (!s.shakes) return `no handshakes yet today. Visitors can say "handshake challenge" to play.`;
+  if (!s.shakes) return "no handshakes yet today.";
   const last = HS.lastVerdict ? ` Last one: ${HS_NAME[HS.lastVerdict.verdict]}, ${HS.lastVerdict.force}% grip, ${fmtSpan(Math.max(1, Math.round((Date.now() - HS.lastVerdict.at) / 1000)))} ago.` : "";
-  return `${s.shakes} handshake${s.shakes === 1 ? "" : "s"} today, strongest grip ${s.best}%, average ${s.avg}%; ${s.by.nice} nice, ${s.by.strong} strong, ${s.by.too_soft} too soft, ${s.by.too_hard} too hard.${last} Visitors can say "handshake challenge" to play.`;
+  return `${s.shakes} handshake${s.shakes === 1 ? "" : "s"} today, strongest grip ${s.best}%, average ${s.avg}%; ${s.by.nice} nice, ${s.by.strong} strong, ${s.by.too_soft} too soft, ${s.by.too_hard} too hard.${last}`;
 }
 function hsToast(text) {
   const el = $("hsToast");
   el.textContent = text; el.hidden = false;
   clearTimeout(hsToast.t); hsToast.t = setTimeout(() => { el.hidden = true; }, 7000);
 }
-function hsEvent(e) {
-  const ch = HS.challenge;
-  if (e.type === "verdict" && e.force_pct != null) {
-    const s = HS.stats && HS.stats.day === new Date().setHours(0, 0, 0, 0) ? HS.stats : null;
-    const record = s ? e.force_pct > s.best && s.shakes >= 2 : false;
-    if (s) {                                               // count it straight away, without waiting for the next refresh
-      s.shakes++; s.by[e.verdict] = (s.by[e.verdict] || 0) + 1; s.avg = Math.round((s.avg * (s.shakes - 1) + e.force_pct) / s.shakes);
-      s.best = Math.max(s.best, e.force_pct); s.top = [...s.top, e.force_pct].sort((a, b) => b - a).slice(0, 5);
-    }
-    HS.lastVerdict = { verdict: e.verdict, force: e.force_pct, at: Date.now() };
-    const place = hsConf().place;
-    if (ch) { hsFinish(e, record); return; }
-    hsToast(`${place} handshake: ${HS_NAME[e.verdict] || e.verdict}, ${e.force_pct}% grip${record ? " (today's record!)" : ""}`);
-    // say something only when it won't interrupt anyone, and someone is here to hear it (or the handshake is next to me)
-    const react = (CONFIG.handshake || {}).react || "auto";
-    const someoneHere = Date.now() - SEE.lastNear < 15e3 || Date.now() - lastActivity < 30e3;
-    if (react === "off" || state !== "idle" || document.body.classList.contains("has-panel")) return;
-    if (react === "always" || (CONFIG.handshake || {}).nearby || someoneHere) {
-      mood(HS_MOOD[e.verdict]);
-      say(`${(CONFIG.handshake || {}).nearby ? "" : `Someone just shook hands in the ${place}. `}${pick(HS_LINES[e.verdict] || HS_LINES.nice)}${record ? ` And that's the strongest grip today, ${e.force_pct} percent!` : ""}`);
-    } else mood(HS_MOOD[e.verdict], 1800);
-    return;
-  }
-  // someone walked up to the handshake but didn't shake it: invite them (only when the hand is next to me)
-  if (!ch && e.type === "nudge" && (CONFIG.handshake || {}).nearby && state === "idle" && !document.body.classList.contains("has-panel")) {
-    mood("happy", 2000); say(pick(["Go on, shake its hand! It doesn't bite.", "Don't be shy, give it a handshake!", "Psst! Try a handshake. I'll rate it!"])); return;
-  }
-  if (!ch) return;
-  if (e.type === "approach") { $("bot").textContent = "I see you! Now grab the hand and shake it."; }
-  else if (e.type === "hold_start") { mood("wow", 1500); $("bot").textContent = "Squeeeeze!"; }
-  else if (e.type === "timeout" && Date.now() - ch.started > 4000) { hsStop("No handshake this time. Say \"handshake challenge\" to try again!"); }
-}
-
-/* "handshake challenge": live grip meter, then a verdict, a score and today's record */
-/* the kiosk's own key lets Cubot ask the handshake to play a sound (only "play" is allowed) */
-async function hsPlay(n) {
-  const c = hsConf(), key = lightsCfg().kioskKey;
-  if (n == null || !key) return;
-  try {
-    await fetch(`${c.url}/rest/v1/rpc/handshake_kiosk_command`, { method: "POST", headers: { apikey: c.key, "Content-Type": "application/json" },
-      body: JSON.stringify({ p_key: key, p_device: c.dev, p_cmd: "play", p_arg: Number(n) }) });
-  } catch (e) {}
-}
-function hsChallenge(duel = false) {
-  if (!HS.ok) { say("Sorry, I can't reach the handshake right now."); return; }
-  if (HS.cfg && HS.cfg.enabled === false) { say("The handshake is switched off at the moment."); return; }
-  const near = (CONFIG.handshake || {}).nearby;
-  HS.challenge = { started: Date.now(), peak: 0, duel: duel ? { round: 1, scores: [] } : null };
-  closePanel();
-  $("hsMeter").hidden = false;
-  $("hsTitle").textContent = duel ? "Handshake duel · Player 1" : "Handshake challenge";
-  hsMeterDraw(0);
-  hsPlay((CONFIG.handshake || {}).playOnChallenge);
-  if (duel) say(`Handshake duel! Two players, one handshake each, and the best handshake wins. Not the strongest, the best! Player 1, ${near ? "shake the hand next to me" : `go to the handshake hand in the ${hsConf().place}`}.`);
-  else say(near ? "Handshake challenge! Shake the hand next to me and show me your best handshake. Not too soft, not too hard!"
-    : `Handshake challenge! Go to the handshake hand in the ${hsConf().place} and give it your best handshake. I'll watch your grip from here!`);
-  clearInterval(HS.meterTimer);
-  HS.meterTimer = setInterval(async () => {
-    if (!HS.challenge) return;
-    if (Date.now() - HS.challenge.started > 120e3) { hsStop("Time's up for the handshake challenge. Try again any time!"); return; }
-    try {
-      const [st] = await hsGet(`handshake_status?device_id=eq.${encodeURIComponent(hsConf().dev)}&select=force_pct,state,distance_cm`);
-      if (st && HS.challenge) { HS.challenge.peak = Math.max(HS.challenge.peak, st.force_pct || 0); hsMeterDraw(st.force_pct || 0, st); }
-    } catch (e) {}
-  }, 400);
-}
-function hsMeterDraw(f, st) {
-  const c = HS.cfg || { soft_max: 30, nice_max: 60, strong_max: 95 };
-  const zones = [["too soft", 0, c.soft_max, "var(--muted)"], ["nice", c.soft_max, c.nice_max, "#2ecc71"], ["strong", c.nice_max, c.strong_max, "#f1c40f"], ["too hard", c.strong_max, 100, "#ff5a5f"]];
-  $("hsZones").innerHTML = zones.map(([n, a, b, col]) => `<div style="bottom:${a}%;height:${b - a}%;background:color-mix(in srgb, ${col} 32%, transparent)"><span>${n}</span></div>`).join("");
-  $("hsFill").style.height = Math.max(0, Math.min(100, f)) + "%";
-  $("hsPeak").style.bottom = Math.min(100, HS.challenge ? HS.challenge.peak : 0) + "%";
-  $("hsNum").textContent = Math.round(f) + "%";
-  $("hsState").textContent = st ? (st.state === "IDLE" && st.distance_cm && st.distance_cm < 80 ? "Come closer…" : st.force_pct > 3 ? "Squeezing!" : "Waiting for a handshake…") : "Waiting for a handshake…";
-}
-function hsScore(f) {
-  const c = HS.cfg || { soft_max: 30, nice_max: 60, strong_max: 95 };
-  const mid = (c.soft_max + c.nice_max) / 2, half = (c.nice_max - c.soft_max) / 2;
-  return Math.max(0, Math.round(100 - Math.max(0, Math.abs(f - mid) - half * 0.4) * 1.6));
-}
-function hsFinish(e, record) {
-  const f = e.force_pct, s = HS.stats;
-  const duel = HS.challenge && HS.challenge.duel;
-  if (duel) {
-    const sc = hsScore(f);
-    duel.scores.push({ f, sc, v: e.verdict });
-    hsMeterDraw(f);
-    if (duel.round === 1) {
-      duel.round = 2; HS.challenge.peak = 0; HS.challenge.started = Date.now();
-      mood(HS_MOOD[e.verdict], 2500);
-      $("hsTitle").textContent = "Handshake duel · Player 2";
-      say(`Player 1: ${f} percent, ${HS_NAME[e.verdict]}. That's ${sc} points. Now player 2, your turn!`);
-      return;
-    }
-    const [a, b] = duel.scores;
-    mood("wow", 4000);
-    const win = a.sc === b.sc ? "It's a draw! Two equally good handshakes." : `Player ${a.sc > b.sc ? 1 : 2} wins!`;
-    hsStop(`Player 2: ${f} percent, ${HS_NAME[e.verdict]}, ${sc} points. Player 1 had ${a.sc} points. ${win}`, 6000);
-    return;
-  }
-  hsMeterDraw(f);
-  const rank = s ? s.top.indexOf(f) + 1 : 0;
-  const score = hsScore(f);               // out of 100: a grip in the middle of the "nice" zone is perfect
-  mood(HS_MOOD[e.verdict], 4000);
-  const holdTxt = e.hold_ms ? ` You held it for ${(e.hold_ms / 1000).toFixed(1)} seconds.` : "";
-  hsStop(`${pick(HS_LINES[e.verdict] || HS_LINES.nice)} Your grip was ${f} percent, that's ${HS_NAME[e.verdict]}. Handshake score: ${score} out of 100.${holdTxt}` +
-    (record ? ` New record! The strongest grip today!` : rank && rank <= 3 && s.shakes > 3 ? ` That's number ${rank} today!` : ""), 6000);
-}
-function hsStop(msg, keepMeter = 0) {
-  HS.challenge = null;
-  clearInterval(HS.meterTimer);
-  setTimeout(() => { if (!HS.challenge) $("hsMeter").hidden = true; }, keepMeter);
-  if (msg) say(msg);
-}
-
 /* ---------------- Makerspace data (tool scale, storage map, stock, light timer) ----------------
    Read from the same Supabase project as the lights and the handshake:
    - "Where's the big plier?" -> which room, cabinet/box and level, a little map, and whether it's out right now
@@ -3885,7 +3665,7 @@ async function msTick() {
     if (bits.length) { mood("happy", 3000); say(`Makerspace end of day. ${bits.join(" ")}`); }
   }
   // live card: welcome screen, nobody using the kiosk for 2 minutes, nobody seen
-  const quiet = state === "idle" && !document.body.classList.contains("has-panel") && Date.now() - lastActivity > 120e3 && Date.now() - SEE.lastNear > 60e3 && $("hsMeter").hidden;
+  const quiet = state === "idle" && !document.body.classList.contains("has-panel") && Date.now() - lastActivity > 120e3 && Date.now() - SEE.lastNear > 60e3;
   if (!c.liveCard || !quiet) { $("liveCard").hidden = true; return; }
   try {
     if (lightsReady() && Date.now() - MS.lightAt > 55e3) { MS.light = await lightsRead(); MS.lightAt = Date.now(); }
@@ -3951,7 +3731,7 @@ Work out what the visitor really needs, even if they ask in a roundabout way, th
    Names may be spelt differently (heard by a microphone): pick the closest name in PEOPLE. You don't know where people
    sit or which team they are in, so never say it yourself: the PERSON line shows it. If no one in PEOPLE is close,
    say you couldn't find that name and ask them to spell it or check with a staff member.
-3. They want you to DO something: a countdown, a timer, a reminder, check or cancel a timer, maths, a handshake challenge, or switching the ${lightsReady() ? lightsCfg().room + " " : ""}lights now or later.
+3. They want you to DO something: a countdown, a timer, a reminder, check or cancel a timer, maths, or switching the ${lightsReady() ? lightsCfg().room + " " : ""}lights now or later.
    Reply with exactly one line: DO: <the request in plain short words, times as numbers>
    For example: "DO: remind me in 15 minutes to call John", "DO: turn off the wall light in 10 minutes", "DO: countdown 30 seconds",
    "DO: timer at 5:34 pm", "DO: cancel the timer", "DO: how long is left on the timer". TIMERS RUNNING lists what is set now.

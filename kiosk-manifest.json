@@ -1,7 +1,7 @@
 {
-  "version": "2026.11.20.12",
+  "version": "2026.11.20.13",
   "notes": [
-    "Handshake results arrive instantly over a live connection (checks every 2 s only as a backup)",
+    "Handshake: game and live reactions removed; Cubot still reads the data for reports (today's numbers, 5 pm summary)",
     "Face memory: say 'remember me' and Cubot learns your face (with permission) and greets you by name; 'forget me' deletes it",
     "Finds people from close spellings (Jessy -> Jessie Chan); the AI no longer guesses where someone sits",
     "Cubot no longer reads emojis or emoticons out loud (they still show on screen)",
