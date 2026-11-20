@@ -2868,6 +2868,7 @@ function renderDiag() {
     `<b>Camera</b>    ${SEE.on ? (SEE.paused ? "lent to the parcel camera" : "ON, checked " + ago(SEE.lastFrame)) : "OFF: " + (statusNotes.see || (CONFIG.greetPeople ? "starting…" : "greetPeople is false"))}`,
     `          biggest face: ${SEE.lastWidth ? SEE.lastWidth.toFixed(3) : "none"}  (greets at ${CONFIG.greetFaceSize} or bigger)`,
     `          last greeting: ${ago(SEE.lastGreet)}`,
+    `<b>Handshake</b> ${HS.ok ? (HS.live ? "live connection (instant)" : "checking every 2 s (live connection not working)") : "not connected"}${HS.lastVerdict ? `, last result ${ago(HS.lastVerdict.at)}` : ""}`,
     `<b>PC</b>        ${HW.ramGB ? `${HW.ramGB} GB memory, ${HW.gpus.length ? HW.gpus.map(g => `${esc(g.name)} ${g.vramGB} GB`).join(", ") : "no NVIDIA graphics card found"}${HW.cpu ? ", " + esc(HW.cpu) : ""}` : "not measured (needs kiosk-server.py)"}`,
     `<b>Version</b>   ${(window.KIOSK_VERSION || {}).sha ? `${esc(window.KIOSK_VERSION.version || "")} ${esc(window.KIOSK_VERSION.sha.slice(0, 7))}, installed ${esc(window.KIOSK_VERSION.installed || "?")}` : "not from GitHub yet"}${updateWaiting ? " (new version waiting, reloads when nobody is here)" : ""}`,
     `<b>AI</b>        ${CONFIG.useAI ? `${esc(CONFIG.model)}${HW.why ? ` (${esc(HW.why)})` : ""}${AI.thinkOnly ? " (thinks first: slow)" : ""}, ${AI.gpu || "checking…"}${AI.warmMs ? `, warmed up in ${(AI.warmMs / 1000).toFixed(1)} s` : ""}` : "off (useAI is false)"}`,
@@ -3472,7 +3473,7 @@ function tryActions(text, quote) {
    - reacts with a face and a comment when someone shakes its hand ("Ouch! My circuits!")
    - "handshake challenge": a live grip meter on screen, a verdict and a score, and today's record
    - knows today's handshake stats, so "how many handshakes today?" or "what's the strongest grip?" work */
-const HS = { ok: false, last: 0, busy: false, cfg: null, stats: null, statsAt: 0, lastVerdict: null, challenge: null, meterTimer: 0, errors: 0 };
+const HS = { ok: false, last: 0, busy: false, cfg: null, stats: null, statsAt: 0, lastVerdict: null, challenge: null, meterTimer: 0, errors: 0, live: false, ws: null, polled: 0 };
 const HS_LINES = {
   too_soft: ["That was a bit of a limp fish! Give it a real squeeze next time.", "So gentle! Are you shy? Try a firmer grip.", "Hmm, a feather handshake. Squeeze like you mean it!"],
   nice: ["Perfect handshake! Firm and friendly, ten out of ten.", "Now that is a proper handshake. Very professional!", "Lovely grip. You'd ace any job interview!"],
@@ -3509,15 +3510,62 @@ async function hsInit() {
     HS.ok = true;
     hsStats();
   } catch (e) { setTimeout(hsInit, 60e3); return; }
-  (function loop() { hsPoll().finally(() => setTimeout(loop, HS.challenge ? 700 : 2000)); })();
+  hsLive();
+  // checking every 2 s is the backup: while the live connection works, only every 15 s (3 s in a challenge)
+  (function loop() {
+    const due = !HS.live || Date.now() - HS.polled > (HS.challenge ? 3000 : 15000);
+    (due ? hsPoll() : Promise.resolve()).finally(() => setTimeout(loop, HS.challenge ? 700 : 2000));
+  })();
   setInterval(hsStats, 120e3);
+}
+/* Live connection (Supabase Realtime): a new handshake row arrives here the moment it is saved, instead of
+   waiting for the next check. If it drops, the checks above carry on and it reconnects by itself. */
+function hsLive(wait = 2000) {
+  const c = hsConf();
+  if (!window.WebSocket || !/^https:\/\//.test(c.url) || (CONFIG.handshake || {}).live === false) return;
+  let ws, beat = 0, ref = 1, opened = Date.now();
+  const send = (topic, event, payload) => { try { ws.send(JSON.stringify({ topic, event, payload, ref: String(++ref), join_ref: topic === "phoenix" ? undefined : "1" })); } catch (e) {} };
+  try { ws = new WebSocket(c.url.replace(/^https/, "wss") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(c.key) + "&vsn=1.0.0"); }
+  catch (e) { setTimeout(() => hsLive(Math.min(wait * 2, 60e3)), wait); return; }
+  HS.ws = ws;
+  ws.onopen = () => {
+    const payload = { config: { broadcast: { self: false }, presence: { key: "" },
+      postgres_changes: [{ event: "INSERT", schema: "public", table: "handshake_events", filter: "device_id=eq." + c.dev }] } };
+    if (/^eyJ/.test(c.key)) payload.access_token = c.key;          // old-style keys are tokens; new publishable keys are not
+    send("realtime:cubot-handshake", "phx_join", payload);
+    beat = setInterval(() => send("phoenix", "heartbeat", {}), 25e3);
+  };
+  ws.onmessage = m => {
+    let d; try { d = JSON.parse(m.data); } catch (e) { return; }
+    if (d.event === "phx_reply" && d.topic === "realtime:cubot-handshake") {
+      const ok = d.payload && d.payload.status === "ok";
+      if (!ok) { console.warn("Handshake live connection refused:", d.payload); try { ws.close(); } catch (e) {} return; }
+      if (d.payload.response && d.payload.response.postgres_changes) { HS.live = true; hsPoll(); }   // catch anything from before
+    }
+    if (d.event === "system" && d.payload && d.payload.status === "error") { console.warn("Handshake live:", d.payload.message); HS.live = false; }
+    if (d.event === "postgres_changes") {
+      const r = d.payload && d.payload.data && d.payload.data.record;
+      if (!r || r.device_id !== c.dev || !(r.id > HS.last)) return;
+      HS.last = r.id; HS.ok = true; HS.errors = 0;
+      hsEvent(r);
+    }
+  };
+  ws.onclose = () => {
+    clearInterval(beat);
+    HS.live = false;
+    if (HS.ws !== ws) return;
+    const next = Date.now() - opened > 60e3 ? 2000 : Math.min(wait * 2, 60e3);   // it worked for a while: retry soon
+    setTimeout(() => hsLive(next), next);
+  };
+  ws.onerror = () => { try { ws.close(); } catch (e) {} };
 }
 async function hsPoll() {
   if (HS.busy) return;
   HS.busy = true;
+  HS.polled = Date.now();
   try {
     const rows = await hsGet(`handshake_events?device_id=eq.${encodeURIComponent(hsConf().dev)}&id=gt.${HS.last}&order=id.asc&limit=25`);
-    for (const e of rows) { HS.last = Math.max(HS.last, e.id); hsEvent(e); }
+    for (const e of rows) { if (e.id <= HS.last) continue; HS.last = e.id; hsEvent(e); }   // the live connection may have shown it already
     HS.ok = true; HS.errors = 0;
   } catch (e) { if (++HS.errors > 3) HS.ok = false; }
   finally { HS.busy = false; }
