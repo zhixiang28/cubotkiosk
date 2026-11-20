@@ -1,9 +1,9 @@
 {
-  "version": "2026.11.20.2",
+  "version": "2026.11.20.3",
   "notes": [
-    "Linked to the Makerspace handshake: reactions, live grip meter challenge, today's handshake stats",
-    "Updates itself from GitHub every time it starts",
-    "Picks the smartest AI model this PC can run fast"
+    "Makerspace data: find tools and stock with a mini map, tools out, light timer, live card, 5pm summary",
+    "Handshake duel mode and invites",
+    "Linked to the Makerspace handshake: reactions, live grip meter challenge, today's handshake stats"
   ],
   "files": [
     "welcome-kiosk.html",

@@ -439,6 +439,22 @@ body.mood-meh .mouth { width: min(3vw, 4vh); }
 .hs-peak { position: absolute; left: 4px; right: 4px; height: 3px; background: var(--card-text); bottom: 0; transition: bottom 0.35s ease; }
 .hs-num { font-size: clamp(32px, 4vw, 54px); font-weight: 900; font-variant-numeric: tabular-nums; }
 .hs-state { color: var(--muted); font-size: 14px; text-align: center; }
+.ms-card, .live-card { position: fixed; left: 2vw; top: 13vh; z-index: 7; background: var(--card-2); color: var(--card-text);
+  border: 2px solid var(--line); border-radius: 20px; padding: 14px 16px; width: min(330px, 22vw); display: flex; flex-direction: column; gap: 8px; }
+.ms-card[hidden], .live-card[hidden] { display: none; }
+.ms-title, .live-title { font-weight: 800; font-size: clamp(15px, 1.5vw, 20px); color: var(--listen); }
+.ms-text { font-size: clamp(15px, 1.4vw, 19px); line-height: 1.35; }
+.ms-map svg { width: 100%; height: 22vh; display: block; background: var(--bg); border-radius: 12px; }
+.ms-map rect { fill: color-mix(in srgb, var(--card-text) 18%, transparent); stroke: color-mix(in srgb, var(--card-text) 35%, transparent); stroke-width: 0.03; }
+.ms-map rect.hit { fill: var(--speak); stroke: var(--speak); }
+.ms-map .ring { fill: none; stroke: var(--speak); stroke-width: 0.06; animation: msPulse 1.4s ease-in-out infinite; }
+@keyframes msPulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.ms-room { color: var(--muted); font-size: 13px; margin-top: 6px; }
+.ms-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+#liveRows div { display: flex; flex-direction: column; padding: 6px 0; border-top: 1px solid var(--line); }
+#liveRows span { color: var(--muted); font-size: 12px; }
+#liveRows b { font-size: clamp(14px, 1.3vw, 17px); }
+body.has-panel .live-card { display: none; }
 .status { position: fixed; bottom: 1vh; left: 2vw; font-size: 12px; line-height: 1.3; color: var(--muted); max-width: 44vw; text-align: left; z-index: 6; }
 body.has-panel .stage { padding-bottom: 5vh; }
 
@@ -541,12 +557,19 @@ body.setup .map-wrap { cursor: crosshair; }
 <div class="big-count" id="bigCount" hidden><span id="bigNum"></span><button type="button" id="bigStop" class="chip">Stop countdown</button></div>
 <div class="hs-toast" id="hsToast" hidden></div>
 <div class="hs-meter" id="hsMeter" hidden>
-  <div class="hs-title">Handshake challenge</div>
+  <div class="hs-title" id="hsTitle">Handshake challenge</div>
   <div class="hs-bar"><div class="hs-zones" id="hsZones"></div><div class="hs-fill" id="hsFill"></div><div class="hs-peak" id="hsPeak"></div></div>
   <div class="hs-num" id="hsNum">0%</div>
   <div class="hs-state" id="hsState">Waiting for a handshake…</div>
   <button type="button" class="chip" onclick="hsStop('OK, challenge cancelled.')">Cancel</button>
 </div>
+<div class="ms-card" id="msCard" hidden>
+  <div class="ms-title" id="msTitle"></div>
+  <div class="ms-text" id="msText"></div>
+  <div class="ms-map" id="msMap"></div>
+  <div class="ms-btns"><button type="button" class="chip" id="msWay" hidden>Show me the way</button><button type="button" class="chip" onclick="$('msCard').hidden = true">Close</button></div>
+</div>
+<div class="live-card" id="liveCard" hidden><div class="live-title">Makerspace live</div><div id="liveRows"></div></div>
 <div class="status" id="status"></div>
 <div class="diag" id="diag" hidden></div>
 
@@ -610,7 +633,15 @@ const CONFIG = {
     place: "Makerspace",
     nearby: false,                  // true if the handshake stands right next to Cubot (then she always reacts out loud)
     react: "auto",                  // "auto" = comment out loud only when someone is at the kiosk, "always", or "off"
-    button: true                    // a "Handshake challenge" button on the welcome screen
+    button: true,                   // a "Handshake challenge" button on the welcome screen
+    playOnChallenge: null           // sound number the handshake plays when a challenge starts (e.g. 1), null = none
+  },
+  makerspace: {                     // tool scale, storage map, stock and light timer from Supabase
+    enabled: true,
+    summaryAt: "17:00",             // weekday end-of-day reminder: tools still out + handshake of the day ("" = off)
+    liveCard: true,                 // "Makerspace live" card on the welcome screen when nobody is around
+    toolNotes: true,                // a note on screen when a tool is taken out or put back
+    roomPlaces: {}                  // storage room -> office place for "show me the way", e.g. { "MAKER SPACE": "Team T office" }
   },
   lights: {                         // office lights (the ESP32 smart switch). Works only on the office network
     url: "https://ogxuwchojexznsxvvdhi.supabase.co",
@@ -2480,6 +2511,7 @@ function renderDiag() {
     `<b>AI</b>        ${CONFIG.useAI ? `${esc(CONFIG.model)}${HW.why ? ` (${esc(HW.why)})` : ""}${AI.thinkOnly ? " (thinks first: slow)" : ""}, ${AI.gpu || "checking…"}${AI.warmMs ? `, warmed up in ${(AI.warmMs / 1000).toFixed(1)} s` : ""}` : "off (useAI is false)"}`,
     `          last answer: ${AI.at ? `first words after ${(AI.firstMs / 1000).toFixed(1)} s, done in ${(AI.totalMs / 1000).toFixed(1)} s` : "none yet"}`,
     `<b>Handshake</b> ${!CONFIG.handshake || CONFIG.handshake.enabled === false ? "off" : HS.ok ? `connected (${esc(hsConf().dev)}). ${esc(hsText())}` : "not connected yet"}`,
+    `<b>Makerspace</b> ${msConf().enabled === false ? "off" : MS.ok ? `${MS.tools.length} tools, ${MS.cons.length} stock items, ${MS.units.size} storage spots, updated ${ago(MS.at)}` : "not connected yet"}`,
     `<b>Internet</b>  ${CONFIG.internet ? (NET.at ? `last search ${ago(NET.at)} via ${esc(NET.source || "nothing")} (${NET.ms} ms): "${esc(NET.query)}"` : "no searches yet") + (NET.error ? `  problem: ${esc(NET.error)}` : "") : "off (internet is false)"}`,
     `<b>Voice</b>     ${voice ? esc(voice.name) : "none"}  pitch ${(+voicePitch).toFixed(2)} speed ${(+voiceRate).toFixed(2)}${useLocalVoice ? " (fell back to offline voice)" : ""}`,
     `<b>Screen</b>    ${state}${document.body.classList.contains("has-panel") ? ", panel open" : ""}`,
@@ -2891,8 +2923,31 @@ function tryActions(text, quote) {
   // handshake: "handshake challenge", "test my grip", "how many handshakes today?", "how did I do?"
   const HSW = /\b(hand ?shakes?|shake (my |a |the |your )?hands?|grip|handshaking)\b/;
   if (HS.challenge && /\b(cancel|stop|never ?mind|quit|end)\b/.test(t)) { hsStop("OK, challenge cancelled."); return keep(); }
+  if (HSW.test(t) && /\b(duel|versus|vs|against|two players?|2 players?|1v1|one on one)\b/.test(t)) { hsChallenge(true); return keep(); }
   if (HSW.test(t) && /\b(challenge|game|test|battle|contest|play|try|compete|competition)\b/.test(t) || /\b(test|check|measure) my (grip|handshake)\b|\bhow strong is my (grip|handshake)\b/.test(t)) {
     hsChallenge(); return keep();
+  }
+
+  // Makerspace: tools out, light timer, "where's the big plier?", "do we have hex screws?"
+  if (MS.ok && /\btools?\b/.test(t) && /\b(out|missing|borrowed|taken|not back|not returned|who has|still out|gone)\b/.test(t)) {
+    const out = msToolsOut();
+    say(out.length ? `${out.length === 1 ? "One tool is" : out.length + " tools are"} out right now: ${out.map(x => x.name).join(", ")}.` : "All the tools are in the toolbox right now.");
+    return keep();
+  }
+  if (MS.ok && /\blights?\b/.test(t) && /\b(timer|schedule|when|what time|go off|turn off|switch off|come on|turn on|automatic)\b/.test(t) && !/\b(in|at|after)\s+\d/.test(t) && /\b(when|what time|timer|schedule|automatic)\b/.test(t)) {
+    const plan = msLightPlan();
+    if (plan) { say(plan); return keep(); }
+  }
+  if (MS.ok && /\b(where|find|looking for|look for|got|have|keep|stock|how many|any|need|borrow|grab|get)\b/.test(t)) {
+    const m = msFind(text);
+    const place = findLocation(text);
+    if (m && !(place && (m.kind === "unit" || m.score < 20))) {        // an office place ("laser cutter") wins over a one-word tool ("cutter")
+      const a = msAnswer(m);
+      closePanel();
+      msShowCard(m.kind === "stock" ? "Stock" : m.kind === "tool" ? (a.out ? "Tool (out now)" : "Tool") : "Storage", a.text, a.unit);
+      say(a.text);
+      return keep();
+    }
   }
   if (HSW.test(t) && /\b(how many|today|record|best|strongest|top|stats?|statistics|score|leaderboard|average|most)\b/.test(t)) {
     if (!HS.ok || !HS.stats) say("Sorry, I can't reach the handshake right now.");
@@ -3091,6 +3146,10 @@ function hsEvent(e) {
     } else mood(HS_MOOD[e.verdict], 1800);
     return;
   }
+  // someone walked up to the handshake but didn't shake it: invite them (only when the hand is next to me)
+  if (!ch && e.type === "nudge" && (CONFIG.handshake || {}).nearby && state === "idle" && !document.body.classList.contains("has-panel")) {
+    mood("happy", 2000); say(pick(["Go on, shake its hand! It doesn't bite.", "Don't be shy, give it a handshake!", "Psst! Try a handshake. I'll rate it!"])); return;
+  }
   if (!ch) return;
   if (e.type === "approach") { $("bot").textContent = "I see you! Now grab the hand and shake it."; }
   else if (e.type === "hold_start") { mood("wow", 1500); $("bot").textContent = "Squeeeeze!"; }
@@ -3098,15 +3157,27 @@ function hsEvent(e) {
 }
 
 /* "handshake challenge": live grip meter, then a verdict, a score and today's record */
-function hsChallenge() {
+/* the kiosk's own key lets Cubot ask the handshake to play a sound (only "play" is allowed) */
+async function hsPlay(n) {
+  const c = hsConf(), key = lightsCfg().kioskKey;
+  if (n == null || !key) return;
+  try {
+    await fetch(`${c.url}/rest/v1/rpc/handshake_kiosk_command`, { method: "POST", headers: { apikey: c.key, "Content-Type": "application/json" },
+      body: JSON.stringify({ p_key: key, p_device: c.dev, p_cmd: "play", p_arg: Number(n) }) });
+  } catch (e) {}
+}
+function hsChallenge(duel = false) {
   if (!HS.ok) { say("Sorry, I can't reach the handshake right now."); return; }
   if (HS.cfg && HS.cfg.enabled === false) { say("The handshake is switched off at the moment."); return; }
   const near = (CONFIG.handshake || {}).nearby;
-  HS.challenge = { started: Date.now(), peak: 0 };
+  HS.challenge = { started: Date.now(), peak: 0, duel: duel ? { round: 1, scores: [] } : null };
   closePanel();
   $("hsMeter").hidden = false;
+  $("hsTitle").textContent = duel ? "Handshake duel · Player 1" : "Handshake challenge";
   hsMeterDraw(0);
-  say(near ? "Handshake challenge! Shake the hand next to me and show me your best handshake. Not too soft, not too hard!"
+  hsPlay((CONFIG.handshake || {}).playOnChallenge);
+  if (duel) say(`Handshake duel! Two players, one handshake each, and the best handshake wins. Not the strongest, the best! Player 1, ${near ? "shake the hand next to me" : `go to the handshake hand in the ${hsConf().place}`}.`);
+  else say(near ? "Handshake challenge! Shake the hand next to me and show me your best handshake. Not too soft, not too hard!"
     : `Handshake challenge! Go to the handshake hand in the ${hsConf().place} and give it your best handshake. I'll watch your grip from here!`);
   clearInterval(HS.meterTimer);
   HS.meterTimer = setInterval(async () => {
@@ -3127,14 +3198,34 @@ function hsMeterDraw(f, st) {
   $("hsNum").textContent = Math.round(f) + "%";
   $("hsState").textContent = st ? (st.state === "IDLE" && st.distance_cm && st.distance_cm < 80 ? "Come closer…" : st.force_pct > 3 ? "Squeezing!" : "Waiting for a handshake…") : "Waiting for a handshake…";
 }
-function hsFinish(e, record) {
-  const f = e.force_pct, s = HS.stats;
-  hsMeterDraw(f);
-  const rank = s ? s.top.indexOf(f) + 1 : 0;
-  // score out of 100: a "nice" grip in the middle of the nice zone is perfect
+function hsScore(f) {
   const c = HS.cfg || { soft_max: 30, nice_max: 60, strong_max: 95 };
   const mid = (c.soft_max + c.nice_max) / 2, half = (c.nice_max - c.soft_max) / 2;
-  const score = Math.max(0, Math.round(100 - Math.max(0, Math.abs(f - mid) - half * 0.4) * 1.6));
+  return Math.max(0, Math.round(100 - Math.max(0, Math.abs(f - mid) - half * 0.4) * 1.6));
+}
+function hsFinish(e, record) {
+  const f = e.force_pct, s = HS.stats;
+  const duel = HS.challenge && HS.challenge.duel;
+  if (duel) {
+    const sc = hsScore(f);
+    duel.scores.push({ f, sc, v: e.verdict });
+    hsMeterDraw(f);
+    if (duel.round === 1) {
+      duel.round = 2; HS.challenge.peak = 0; HS.challenge.started = Date.now();
+      mood(HS_MOOD[e.verdict], 2500);
+      $("hsTitle").textContent = "Handshake duel · Player 2";
+      say(`Player 1: ${f} percent, ${HS_NAME[e.verdict]}. That's ${sc} points. Now player 2, your turn!`);
+      return;
+    }
+    const [a, b] = duel.scores;
+    mood("wow", 4000);
+    const win = a.sc === b.sc ? "It's a draw! Two equally good handshakes." : `Player ${a.sc > b.sc ? 1 : 2} wins!`;
+    hsStop(`Player 2: ${f} percent, ${HS_NAME[e.verdict]}, ${sc} points. Player 1 had ${a.sc} points. ${win}`, 6000);
+    return;
+  }
+  hsMeterDraw(f);
+  const rank = s ? s.top.indexOf(f) + 1 : 0;
+  const score = hsScore(f);               // out of 100: a grip in the middle of the "nice" zone is perfect
   mood(HS_MOOD[e.verdict], 4000);
   const holdTxt = e.hold_ms ? ` You held it for ${(e.hold_ms / 1000).toFixed(1)} seconds.` : "";
   hsStop(`${pick(HS_LINES[e.verdict] || HS_LINES.nice)} Your grip was ${f} percent, that's ${HS_NAME[e.verdict]}. Handshake score: ${score} out of 100.${holdTxt}` +
@@ -3145,6 +3236,198 @@ function hsStop(msg, keepMeter = 0) {
   clearInterval(HS.meterTimer);
   setTimeout(() => { if (!HS.challenge) $("hsMeter").hidden = true; }, keepMeter);
   if (msg) say(msg);
+}
+
+/* ---------------- Makerspace data (tool scale, storage map, stock, light timer) ----------------
+   Read from the same Supabase project as the lights and the handshake:
+   - "Where's the big plier?" -> which room, cabinet/box and level, a little map, and whether it's out right now
+   - "Do we have hex screws?" -> stock count, and a warning when it is running low
+   - "Which tools are out?", "When do the lights go off?"
+   - live: a note on screen when someone takes or returns a tool
+   - end of the day: tools still out and the handshake of the day
+   - "Makerspace live" card on the welcome screen when nobody is around */
+const msEsc = v => String(v == null ? "" : v).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const MS = { ok: false, rooms: new Map(), units: new Map(), tools: [], cons: [], sched: [], timer: null, at: 0, lastTool: 0, scale: null, light: null, lightAt: 0, hsDev: null };
+const msConf = () => Object.assign({ enabled: true, summaryAt: "17:00", liveCard: true, toolNotes: true, roomPlaces: {} }, CONFIG.makerspace || {});
+const prettyRoom = n => String(n || "").toLowerCase().replace(/\bmaker ?space\b/, "makerspace").replace(/\b\w/g, c => c.toUpperCase());
+async function msLoad() {
+  if (msConf().enabled === false || !hsConf().url) return;
+  try {
+    const [rooms, units, tools, cons, sched, light] = await Promise.all([
+      hsGet("space_rooms?active=is.true&select=id,name,w,d,points"),
+      hsGet("space_units?active=is.true&select=id,room_id,kind,name,x,z,w,d,rot,levels,parent_id,parent_level"),
+      hsGet("tools?active=is.true&select=id,name,status,taken_at,unit_id,level,slot"),
+      hsGet("consumables?active=is.true&select=id,name,category,spec,count_on_hand,min_stock,location,unit_id,level"),
+      hsGet("smartlight_schedule?select=at_time,action,target&order=at_time.asc"),
+      hsGet("smartlight?id=eq.1&select=timer_enabled,timer_days,timer_away")
+    ]);
+    MS.rooms = new Map(rooms.map(r => [r.id, r]));
+    MS.units = new Map(units.map(u => [u.id, u]));
+    MS.tools = tools; MS.cons = cons; MS.sched = sched; MS.timer = light[0] || null;
+    MS.ok = true; MS.at = Date.now();
+    if (!MS.lastTool) { const t = await hsGet("tool_events?select=id&order=id.desc&limit=1"); MS.lastTool = t[0] ? t[0].id : 0; }
+  } catch (e) { MS.ok = MS.ok && Date.now() - MS.at < 30 * 60e3; }
+}
+async function msInit() {
+  if (msConf().enabled === false) return;
+  await msLoad();
+  setInterval(msLoad, 5 * 60e3);
+  setInterval(msToolPoll, 10e3);
+  setInterval(msTick, 30e3);
+  msTick();
+}
+/* someone took or put back a tool (the tool scale under the toolbox) */
+async function msToolPoll() {
+  if (!MS.ok || !MS.lastTool) return;
+  try {
+    const rows = await hsGet(`tool_events?id=gt.${MS.lastTool}&order=id.asc&limit=20&select=id,ts,tool_id,tool_name,action`);
+    for (const e of rows) {
+      MS.lastTool = Math.max(MS.lastTool, e.id);
+      const t = MS.tools.find(x => x.id === e.tool_id);
+      const took = /take|out|remove/i.test(e.action), back = /return|back|in/i.test(e.action) && !took;
+      if (t) { if (took) { t.status = "out"; t.taken_at = e.ts; } else if (back) { t.status = "in"; t.taken_at = null; } }
+      if (msConf().toolNotes && (took || back)) hsToast(`Makerspace: ${e.tool_name} was ${took ? "taken out" : "put back"}`);
+    }
+  } catch (e) {}
+}
+
+/* where something is kept: "in Box 5, on level 2 of the Inside Rack, in the Storeroom" */
+function msWhere(unitId, level, slot) {
+  const parts = [];
+  if (slot && !/^test$/i.test(slot)) parts.push(`in the ${slot}`);
+  let u = MS.units.get(unitId), lvl = level;
+  const room = u && MS.rooms.get(u.room_id);
+  for (let g = 0; u && g < 6; g++) {
+    const the = /^(box|cabinet|drawers?)\b/i.test(u.name) ? "" : "the ";
+    parts.push(lvl && u.levels > 1 ? `on level ${lvl} of ${the}${u.name}` : `in ${the}${u.name}`);
+    lvl = u.parent_level;
+    u = u.parent_id ? MS.units.get(u.parent_id) : null;
+  }
+  if (room) parts.push(`in the ${prettyRoom(room.name)}`);
+  return parts.join(", ");
+}
+/* match a request to a tool, a stock item or a storage unit: every important word of the name must be said */
+const MS_SKIP = new Set(["the", "a", "an", "of", "and", "copy", "small", "big", "large", "tiny", "long", "2", "3", "4", "box", "cabinet", "rack", "shelf"]);
+const msWords = s => norm(String(s).replace(/\([^)]*\)/g, " ")).split(/\s+/).filter(Boolean).map(w => w.replace(/([^s])s$/, "$1"));
+function msFind(text) {
+  if (!MS.ok) return null;
+  const said = new Set(msWords(text));
+  const cands = [
+    ...MS.tools.map(t => ({ kind: "tool", item: t, name: t.name })),
+    ...MS.cons.map(c => ({ kind: "stock", item: c, name: c.name })),
+    ...[...MS.units.values()].filter(u => !/ copy\b/i.test(u.name) && !/^box \d+$/i.test(u.name)).map(u => ({ kind: "unit", item: u, name: u.name }))
+  ];
+  let best = null;
+  for (const c of cands) {
+    const all = msWords(c.name), key = all.filter(w => !MS_SKIP.has(w));
+    if (!key.length || !key.every(w => said.has(w))) continue;
+    const extra = all.filter(w => MS_SKIP.has(w) && said.has(w)).length;          // "big plier" beats "plier" when "big" was said
+    const missing = all.filter(w => MS_SKIP.has(w) && !said.has(w) && !/^\d$/.test(w)).length;
+    const score = key.length * 10 + extra * 3 - missing * 2 + (c.kind === "tool" ? 1 : 0);
+    if (!best || score > best.score) best = { ...c, score };
+  }
+  return best;
+}
+function msAnswer(m) {
+  if (m.kind === "unit") {
+    const u = m.item, room = MS.rooms.get(u.room_id);
+    const where = u.parent_id ? msWhere(u.parent_id, u.parent_level) : `in the ${prettyRoom(room && room.name)}`;
+    return { text: `The ${u.name} is ${where}.`, unit: u };
+  }
+  const it = m.item, where = it.unit_id ? msWhere(it.unit_id, it.level, it.slot) : it.location || "";
+  if (m.kind === "tool") {
+    const out = it.status === "out";
+    const since = out && it.taken_at ? `, taken out ${fmtSpan(Math.max(60, Math.round((Date.now() - Date.parse(it.taken_at)) / 1000)))} ago` : "";
+    return { text: out ? `The ${it.name} is out right now${since}. It normally lives ${where}.` : `The ${it.name} is ${where || "in the Makerspace"}.`, unit: MS.units.get(it.unit_id), out };
+  }
+  const low = it.min_stock != null && it.count_on_hand != null && it.count_on_hand <= it.min_stock;
+  const count = it.count_on_hand != null ? `We have about ${it.count_on_hand} ${it.name}${it.count_on_hand === 1 ? "" : /s$/i.test(it.name) ? "" : "s"}` : `We keep ${it.name}`;
+  return { text: `${count}${where ? ", " + where : ""}.${low ? " That's running low, so please tell the team to order more." : ""}`, unit: MS.units.get(it.unit_id), low };
+}
+/* a little top-down map of the room with the cabinet/box lit up */
+function msShowCard(title, text, unit) {
+  const card = $("msCard");
+  let svg = "";
+  let top = unit; for (let g = 0; top && top.parent_id && g < 6; g++) top = MS.units.get(top.parent_id) || top;
+  if (top) {
+    const room = MS.rooms.get(top.room_id);
+    const units = [...MS.units.values()].filter(u => u.room_id === top.room_id && !u.parent_id);
+    const xs = units.flatMap(u => [u.x - u.w / 2, u.x + u.w / 2]), zs = units.flatMap(u => [u.z - u.d / 2, u.z + u.d / 2]);
+    const pad = 1, x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, z0 = Math.min(...zs) - pad, z1 = Math.max(...zs) + pad;
+    const rect = u => {
+      const sw = (u.rot || 0) % 180 ? u.d : u.w, sd = (u.rot || 0) % 180 ? u.w : u.d, hit = u.id === top.id;
+      return `<rect x="${(u.x - sw / 2).toFixed(2)}" y="${(u.z - sd / 2).toFixed(2)}" width="${sw.toFixed(2)}" height="${sd.toFixed(2)}" rx="0.06" class="${hit ? "hit" : ""}"/>` +
+        (hit ? `<circle cx="${u.x}" cy="${u.z}" r="${Math.max(sw, sd) * 0.9 + 0.3}" class="ring"/>` : "");
+    };
+    svg = `<svg viewBox="${x0} ${z0} ${x1 - x0} ${z1 - z0}" preserveAspectRatio="xMidYMid meet">${units.map(rect).join("")}</svg>
+      <div class="ms-room">${msEsc(prettyRoom(room && room.name))} · <b>${msEsc(top.name)}</b></div>`;
+  }
+  $("msTitle").textContent = title;
+  $("msText").textContent = text;
+  $("msMap").innerHTML = svg;
+  const placeName = top && (msConf().roomPlaces[(MS.rooms.get(top.room_id) || {}).name] || "");
+  const place = placeName && INFO.locations.find(l => norm(l.name) === norm(placeName));
+  $("msWay").hidden = !place;
+  $("msWay").onclick = () => { card.hidden = true; if (place) goToPlace(place); };
+  card.hidden = false;
+  clearTimeout(msShowCard.t); msShowCard.t = setTimeout(() => { card.hidden = true; }, 40e3);
+}
+function msToolsOut() { return MS.tools.filter(t => t.status === "out"); }
+const LIGHT_SIDE = { left: 1, right: 2 };
+function msLightPlan() {
+  if (!MS.sched.length) return "";
+  const c = lightsCfg(), name = t => t === "both" ? "all the lights" : `the ${c.lights[(LIGHT_SIDE[t] || 1) - 1].name.toLowerCase()}`;
+  const days = MS.timer && MS.timer.timer_days || [1, 2, 3, 4, 5];
+  const today = new Date(), dow = today.getDay() || 7;
+  const iso = today.toLocaleDateString("en-CA");
+  const away = (MS.timer && MS.timer.timer_away || []).some(a => iso >= a.from && iso <= a.to);
+  if (MS.timer && MS.timer.timer_enabled === false) return "The light timer is switched off.";
+  const plan = MS.sched.map(s => `${name(s.target)} ${s.action === "ON" ? "on" : "off"} at ${fmtClock(new Date(`${iso}T${s.at_time}`).getTime())}`);
+  const dayNames = days.length === 5 && days.join() === "1,2,3,4,5" ? "on weekdays" : days.length === 7 ? "every day" : "on some days";
+  return `The light timer runs ${dayNames}: ${plan.join(", ")}.${!days.includes(dow) ? " It doesn't run today." : away ? " Today is marked as a holiday, so it only switches lights off." : ""}`;
+}
+function msText() {
+  if (!MS.ok) return "not connected";
+  const out = msToolsOut();
+  return `${MS.tools.length} tools tracked, ${out.length ? `out now: ${out.map(t => t.name).join(", ")}` : "all tools are in"}. ${msLightPlan()}`;
+}
+
+/* every 30 s: end-of-day summary, and the "Makerspace live" card when nobody is around */
+async function msTick() {
+  const c = msConf(), now = new Date();
+  const [hh, mm] = String(c.summaryAt || "").split(":").map(Number);
+  const dayKey = now.toLocaleDateString("en-CA");
+  if (c.summaryAt && now.getHours() === hh && now.getMinutes() >= mm && now.getMinutes() < mm + 10 && (now.getDay() % 6) && storeGet("summaryDay") !== dayKey && state === "idle") {
+    storeSet("summaryDay", dayKey);
+    const bits = [];
+    const out = msToolsOut();
+    if (out.length) bits.push(`${out.length === 1 ? "One tool is" : out.length + " tools are"} still out: ${out.map(t => t.name).join(", ")}. Please put ${out.length === 1 ? "it" : "them"} back!`);
+    if (HS.ok && HS.stats && HS.stats.shakes) bits.push(`Handshake of the day: the best grip was ${HS.stats.best} percent, out of ${HS.stats.shakes} handshakes. ${HS.stats.by.nice} of them were nice!`);
+    if (bits.length) { mood("happy", 3000); say(`Makerspace end of day. ${bits.join(" ")}`); }
+  }
+  // live card: welcome screen, nobody using the kiosk for 2 minutes, nobody seen
+  const quiet = state === "idle" && !document.body.classList.contains("has-panel") && Date.now() - lastActivity > 120e3 && Date.now() - SEE.lastNear > 60e3 && $("hsMeter").hidden;
+  if (!c.liveCard || !quiet) { $("liveCard").hidden = true; return; }
+  try {
+    if (lightsReady() && Date.now() - MS.lightAt > 55e3) { MS.light = await lightsRead(); MS.lightAt = Date.now(); }
+    const [hsd] = HS.ok ? await hsGet(`handshake_status?device_id=eq.${encodeURIComponent(hsConf().dev)}&select=last_seen`) : [null];
+    MS.hsDev = hsd ? hsd.last_seen : null;
+  } catch (e) {}
+  const L = lightsCfg(), on = MS.light && MS.light.on;
+  const s = HS.stats;
+  const online = t => t && Date.now() - Date.parse(t) < 3 * 60e3;
+  const rows = [];
+  if (on) rows.push(`<div><span>Lights</span><b>${L.lights.map((l, i) => `${msEsc(l.name)} ${on[i + 1] ? "on" : "off"}`).join(" · ")}</b></div>`);
+  if (HS.ok) rows.push(`<div><span>Handshakes today</span><b>${s ? s.shakes : 0}${s && s.shakes ? ` · best ${s.best}%` : ""}</b></div>`);
+  if (s && s.top && s.top.length) rows.push(`<div><span>Top grips</span><b>${s.top.slice(0, 3).map(x => x + "%").join(" · ")}</b></div>`);
+  if (MS.ok) { const out = msToolsOut(); rows.push(`<div><span>Tools out</span><b>${out.length ? msEsc(out.map(t => t.name).slice(0, 3).join(", ")) + (out.length > 3 ? ` +${out.length - 3}` : "") : "none"}</b></div>`); }
+  if (MS.ok && MS.sched.length) {
+    const nowT = now.toTimeString().slice(0, 8), next = MS.sched.find(x => x.at_time > nowT);
+    if (next) rows.push(`<div><span>Next light timer</span><b>${next.action === "ON" ? "on" : "off"} at ${fmtClock(new Date(`${dayKey}T${next.at_time}`).getTime())}</b></div>`);
+  }
+  rows.push(`<div><span>Devices</span><b>${HS.ok ? `handshake ${online(MS.hsDev) ? "online" : "offline"}` : ""}</b></div>`);
+  $("liveRows").innerHTML = rows.join("");
+  $("liveCard").hidden = rows.length < 2;
 }
 
 /* ---------------- Answering ---------------- */
@@ -3204,7 +3487,8 @@ ${facts.map(c => "- " + c.text).join("\n")}
 NOW: ${nowText()} (Singapore time)
 TIMERS RUNNING: ${jobsText()}
 ON SCREEN: ${screenText()}
-HANDSHAKE HAND (${hsConf().place}): ${hsText()}`;      // last, so everything above stays cached between questions
+HANDSHAKE HAND (${hsConf().place}): ${hsText()}
+MAKERSPACE: ${msText()}`;      // last, so everything above stays cached between questions
 }
 /* A few worked examples with this office's real names: small models follow examples much better than rules */
 function examples() {
@@ -3712,7 +3996,7 @@ Promise.all([loadInfo(), storeLoad()]).then(() => {
   if (Q.has("telegram")) telegramSetup();
   else if (VOICES) voiceTester();
   else if (SETUP) setupMode();
-  else { welcome(); checkOllama(); tgPoll(); wakeInit(); seeInit(); hsInit(); if (Q.has("debug")) toggleDiag(); }
+  else { welcome(); checkOllama(); tgPoll(); wakeInit(); seeInit(); hsInit(); msInit(); if (Q.has("debug")) toggleDiag(); }
 });
 </script>
 </body>
