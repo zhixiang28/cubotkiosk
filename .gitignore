@@ -1,0 +1,15 @@
+# This PC's own files: never put them on GitHub (secrets, staff details, settings)
+office-info.txt
+kiosk-config.json
+kiosk-settings.json
+kiosk-settings.json.tmp
+python-path.txt
+.cubot-version
+update-log.txt
+start-kiosk.bat.new
+backups/
+browser-profile/
+browser-profile-chrome/
+Ollama/
+*.tmp
+__pycache__/

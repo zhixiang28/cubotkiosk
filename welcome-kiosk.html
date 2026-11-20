@@ -1,0 +1,3480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Welcome Kiosk</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #1b1642;
+  --bg-glow: #2e2675;
+  --eye: #f1eeff;
+  --text: #f1eeff;
+  --muted: #aaa4dc;
+  --line: rgba(241, 238, 255, 0.18);
+  --listen: #7dd3fc;
+  --think: #c4b5fd;
+  --speak: #fde68a;
+  --card: #2a2463;
+  --card-2: #342d78;
+  --card-text: #f1eeff;
+  --pin: #f97362;
+  --here: #0ea5e9;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg: #ece9ff;
+    --bg-glow: #ddd7ff;
+    --eye: #1b1642;
+    --text: #1b1642;
+    --muted: #5b5492;
+    --line: rgba(27, 22, 66, 0.15);
+    --listen: #0284c7;
+    --think: #7c3aed;
+    --speak: #b45309;
+    --card: #ffffff;
+    --card-2: #f3f1ff;
+    --card-text: #1b1642;
+    --pin: #e0452f;
+    --here: #0284c7;
+  }
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  background: radial-gradient(ellipse at 50% 38%, var(--bg-glow), var(--bg) 72%);
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: "Nunito", "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+body.no-cursor, body.no-cursor * { cursor: none !important; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--listen); outline-offset: 3px; }
+
+/* ---------------- Top bar ---------------- */
+.top {
+  position: fixed;
+  inset: 0 0 auto 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2.4vh 2.6vw;
+  z-index: 5;
+  pointer-events: none;
+}
+.brand { display: flex; align-items: center; gap: 14px; font-weight: 800; font-size: clamp(20px, 2vw, 28px); }
+.brand img { height: clamp(32px, 5vh, 54px); width: auto; }
+.clock { text-align: right; line-height: 1.15; }
+.timers { flex: 1; min-width: 0; display: flex; flex-wrap: nowrap; justify-content: center; gap: 8px; padding: 0 16px; overflow: hidden; }
+.timers.many .tm-label { display: none; }
+.tm { display: inline-flex; align-items: center; gap: 10px; background: var(--card-2); color: var(--card-text); border: 2px solid var(--line); border-radius: 999px; padding: 6px 8px 6px 14px; font-size: clamp(14px, 1.4vw, 18px); font-weight: 700; }
+.tm.soon { border-color: var(--speak); }
+.tm-icon svg { width: 20px; height: 20px; display: block; color: var(--listen); }
+.tm-left { font-variant-numeric: tabular-nums; font-size: 1.15em; min-width: 3.2em; text-align: right; }
+.tm-x { border: 0; background: var(--bg); color: var(--muted); width: 32px; height: 32px; border-radius: 50%; font-size: 20px; line-height: 1; cursor: pointer; }
+.big-count { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 8; font-size: 42vh; font-weight: 900; color: var(--speak); background: color-mix(in srgb, var(--bg) 80%, transparent); font-variant-numeric: tabular-nums; }
+.big-count[hidden] { display: none; }
+.big-count { grid-template-rows: 1fr auto; padding-bottom: 8vh; }
+.big-count #bigNum { align-self: center; line-height: 1; }
+#bigStop { pointer-events: auto; font-size: clamp(18px, 2vw, 26px); padding: 14px 30px; }
+.clock .time { font-size: clamp(20px, 2.2vw, 30px); font-weight: 800; }
+.clock .date { font-size: clamp(13px, 1.2vw, 16px); color: var(--muted); }
+
+/* ---------------- Stage (face + conversation) ---------------- */
+.stage {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 100vw;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3.2vh;
+  padding: 11vh 3vw 4vh;
+  transition: width 0.5s cubic-bezier(.3, .8, .3, 1);
+  cursor: pointer;
+}
+body.has-panel .stage { width: 47vw; }
+
+.face { display: flex; flex-direction: column; align-items: center; gap: 4vh; }
+.eyes {
+  display: flex;
+  gap: min(10vw, 15vh);
+  transform: translate(var(--lx, 0px), var(--ly, 0px));
+  transition: transform 0.35s ease;
+}
+.eye {
+  width: min(10vw, 15vh);
+  height: min(17vw, 26vh);
+  background: var(--eye);
+  border-radius: 999px;
+  transition: width 0.4s ease, height 0.3s ease, background 0.3s ease, box-shadow 0.3s ease, border-radius 0.3s ease;
+}
+body.has-panel .eye { width: min(6vw, 11vh); height: min(10vw, 18vh); }
+body.has-panel .eyes { gap: min(6vw, 11vh); }
+.eye.blink { animation: blink 0.18s ease; }
+@keyframes blink { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(0.06); } }
+.mouth {
+  width: min(6vw, 9vh);
+  height: 10px;
+  border-radius: 999px;
+  background: var(--eye);
+  opacity: 0.85;
+  transition: background 0.3s ease, width 0.3s ease;
+}
+body.listening .eye { box-shadow: 0 0 60px var(--listen); background: var(--listen); }
+body.listening .mouth { width: min(3vw, 5vh); background: var(--listen); }
+body.thinking .eyes { transform: translate(0, -3vh); }
+body.thinking .eye { height: min(9vw, 14vh); background: var(--think); }
+body.thinking .mouth { background: var(--think); }
+body.speaking .eye { border-radius: 999px 999px 45% 45%; height: min(13vw, 20vh); }
+body.has-panel.speaking .eye { height: min(8vw, 14vh); }
+body.speaking .mouth { background: var(--speak); animation: talk 0.28s ease-in-out infinite alternate; }
+@keyframes talk { from { height: 8px; } to { height: 30px; } }
+
+.talk { width: min(860px, 100%); text-align: center; }
+.you { color: var(--muted); font-size: clamp(15px, 1.7vw, 20px); min-height: 1.4em; margin-bottom: 1vh; }
+.bubble {
+  display: inline-block;
+  max-width: 100%;
+  max-height: 24vh;
+  overflow-y: auto;
+  background: var(--card);
+  color: var(--card-text);
+  border-radius: 26px;
+  padding: 18px 28px;
+  font-size: clamp(19px, 2.3vw, 30px);
+  font-weight: 700;
+  line-height: 1.35;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.22);
+}
+.bubble:empty { display: none; }
+.bubble { overscroll-behavior: contain; scrollbar-width: thin; }
+body.has-panel .bubble { font-size: clamp(16px, 1.6vw, 22px); max-height: 30vh; padding: 16px 22px; }
+body.has-panel .stage { gap: 2.2vh; }
+body.has-panel .hint { display: none; }
+body.has-panel .chips .chip { font-size: clamp(14px, 1.3vw, 17px); padding: 9px 16px; }
+body.has-panel .face { gap: 2.5vh; }
+
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; max-width: 900px; }
+.chip {
+  border: 2px solid var(--line);
+  background: var(--card-2);
+  color: var(--card-text);
+  border-radius: 999px;
+  padding: 12px 22px;
+  font-size: clamp(15px, 1.6vw, 20px);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  transition: transform 0.15s ease, border-color 0.2s ease;
+}
+.chip:active { transform: scale(0.96); }
+.chip svg { width: 20px; height: 20px; flex: none; }
+.chip.primary { border-color: var(--listen); }
+
+.type-row { display: flex; gap: 10px; width: min(760px, 100%); }
+.type-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: clamp(16px, 1.8vw, 21px);
+  padding: 14px 22px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: var(--card);
+  color: var(--card-text);
+  cursor: text;
+}
+.type-row input:focus { border-color: var(--listen); outline: none; }
+.send {
+  border: none;
+  border-radius: 999px;
+  padding: 0 26px;
+  background: var(--listen);
+  color: var(--bg);
+  font-weight: 800;
+  font-size: clamp(16px, 1.8vw, 21px);
+}
+.hint { color: var(--muted); font-size: clamp(13px, 1.3vw, 16px); }
+
+/* ---------------- Side panel (map, people) ---------------- */
+.panel {
+  position: fixed;
+  top: 10vh;
+  max-height: 87vh;
+  right: 2vw;
+  width: 49vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background: var(--card);
+  color: var(--card-text);
+  border-radius: 28px;
+  padding: 24px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
+  transform: translateX(115%);
+  transition: transform 0.5s cubic-bezier(.3, .8, .3, 1);
+  overflow-y: auto;
+  z-index: 4;
+}
+body.has-panel .panel { transform: translateX(0); }
+.panel-head { display: flex; justify-content: space-between; align-items: start; gap: 16px; }
+.panel-head h2 { font-size: clamp(22px, 2.2vw, 30px); font-weight: 800; line-height: 1.15; }
+.panel-head p { font-size: clamp(15px, 1.5vw, 19px); line-height: 1.45; margin-top: 6px; color: var(--card-text); opacity: 0.85; }
+.close {
+  flex: none;
+  border: 2px solid var(--line);
+  background: transparent;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-weight: 800;
+}
+.person {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: var(--card-2);
+  border-radius: 20px;
+  padding: 14px 18px;
+}
+.avatar {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--pin);
+  color: #fff;
+  font-weight: 800;
+  font-size: 20px;
+}
+.person .name { font-weight: 800; font-size: 20px; }
+.person .role { color: var(--card-text); opacity: 0.75; font-size: 16px; }
+
+.map-wrap { position: relative; border-radius: 16px; overflow: hidden; line-height: 0; flex: none; width: 100%; align-self: center; }
+.map-wrap img { width: 100%; height: auto; display: block; }
+.map-missing {
+  aspect-ratio: 10 / 7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 20px;
+  line-height: 1.4;
+  font-size: 16px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.pin { position: absolute; transform: translate(-50%, -50%); pointer-events: none; }
+.pin .dot { width: 14px; height: 14px; border-radius: 50%; background: #8f89c9; border: 2px solid #fff; }
+.pin .label {
+  position: absolute;
+  left: 50%;
+  top: -10px;
+  transform: translate(-50%, -100%);
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #1b1642;
+  color: #fff;
+}
+.pin.target .dot { width: 24px; height: 24px; background: var(--pin); animation: pulse 1.2s ease-out infinite; }
+.pin.target .label { background: var(--pin); font-size: 16px; }
+.pin.here .dot { width: 20px; height: 20px; background: var(--here); }
+.pin.here .label { background: var(--here); left: 26px; top: 50%; transform: translate(0, -50%); }
+.pin.here.flip .label { left: auto; right: 26px; }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(249, 115, 98, 0.75); }
+  100% { box-shadow: 0 0 0 24px rgba(249, 115, 98, 0); }
+}
+
+.floor-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.floor-tabs button {
+  border: 2px solid var(--line);
+  background: transparent;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-weight: 800;
+  font-size: 15px;
+}
+.floor-tabs button.on { background: var(--listen); color: var(--bg); border-color: var(--listen); }
+.floor-tabs button.has-target:not(.on) { border-color: var(--pin); }
+.floor-note { font-size: 15px; font-weight: 700; color: var(--pin); }
+.route-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.route-svg .halo { fill: none; stroke: #ffffff; stroke-width: 18; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
+.route-svg .dash { fill: none; stroke: var(--pin); stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1 20; animation: march 0.9s linear infinite; }
+@keyframes march { to { stroke-dashoffset: -21; } }
+.pin.step .dot { width: 18px; height: 18px; background: #3f3a85; }
+.pin.step .label { background: #3f3a85; font-size: 13px; }
+.floor-note.clickable { cursor: pointer; text-decoration: underline; }
+#voiceBox { display: flex; flex-direction: column; gap: 12px; }
+#voiceBox[hidden] { display: none; }
+.vc-sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.vc-sliders label { display: flex; flex-direction: column; gap: 4px; font-weight: 700; font-size: 15px; }
+.vc-sliders input { width: 100%; accent-color: var(--listen); }
+#vcList { display: flex; flex-direction: column; gap: 8px; max-height: 46vh; overflow-y: auto; }
+.vc-row { display: flex; align-items: center; gap: 10px; background: var(--card-2); border: 2px solid transparent; border-radius: 16px; padding: 10px 14px; }
+.vc-row.on { border-color: var(--listen); }
+.vc-row .vc-name { flex: 1; min-width: 0; font-weight: 800; font-size: 16px; line-height: 1.25; }
+.vc-row .vc-sub { display: block; font-weight: 600; font-size: 13px; opacity: 0.7; }
+.vc-row .chip { padding: 8px 14px; font-size: 15px; }
+.diag { position: fixed; top: 10vh; left: 2vw; z-index: 9; max-width: 44vw; background: rgba(10, 8, 30, 0.88); color: #e8e6ff; border-radius: 12px; padding: 12px 14px; font: 13px/1.5 Consolas, monospace; white-space: pre-wrap; pointer-events: none; }
+.diag b { color: #7dd3fc; }
+#lightsBox { display: flex; flex-direction: column; gap: 12px; }
+#lightsBox[hidden], #ltRows[hidden], #ltPin[hidden] { display: none; }
+#ltRows { display: flex; flex-direction: column; gap: 12px; }
+.lt-row { display: flex; align-items: center; gap: 14px; background: var(--card-2); border-radius: 18px; padding: 14px 18px; }
+.lt-bulb { flex: none; width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--bg); color: var(--muted); transition: background 0.3s ease, color 0.3s ease, box-shadow 0.3s ease; }
+.lt-bulb svg { width: 26px; height: 26px; }
+.lt-row.on .lt-bulb { background: var(--speak); color: #1b1642; box-shadow: 0 0 26px var(--speak); }
+.lt-name { flex: 1; font-weight: 800; font-size: clamp(16px, 1.5vw, 20px); }
+.lt-state { font-weight: 700; font-size: 15px; opacity: 0.75; min-width: 2.2em; text-align: right; }
+#ltPin { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+#ltDots { font-size: 26px; letter-spacing: 10px; min-height: 1.2em; }
+#ltKeys { display: grid; grid-template-columns: repeat(3, 72px); gap: 10px; }
+#ltKeys button { height: 60px; border-radius: 16px; border: 2px solid var(--line); background: var(--card-2); font-size: 22px; font-weight: 800; }
+#ltKeys button:disabled { visibility: hidden; }
+#parcelBox { display: flex; flex-direction: column; gap: 14px; }
+#parcelBox[hidden] { display: none; }
+.pc-text { font-size: clamp(16px, 1.5vw, 20px); font-weight: 700; }
+.pc-media { position: relative; border-radius: 16px; overflow: hidden; background: #000; max-height: 46vh; }
+.pc-media video, .pc-media img { display: block; width: 100%; max-height: 46vh; object-fit: contain; }
+.pc-frame { position: absolute; inset: 12% 10%; border: 3px dashed rgba(255,255,255,0.8); border-radius: 14px; pointer-events: none; }
+.pc-status { position: absolute; left: 12px; bottom: 12px; padding: 6px 14px; border-radius: 999px; background: rgba(27,22,66,0.85); color: #fff; font-weight: 800; font-size: 15px; }
+.pc-status:empty { display: none; }
+#pcList { max-height: 34vh; overflow-y: auto; }
+.pc-done { display: flex; align-items: center; gap: 16px; background: var(--card-2); border-radius: 18px; padding: 18px; }
+.pc-done p { font-size: clamp(16px, 1.5vw, 20px); font-weight: 700; line-height: 1.4; }
+.pc-tick { flex: none; width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center; background: var(--listen); color: var(--bg); font-size: 28px; font-weight: 800; }
+.pc-btns { justify-content: flex-start; }
+.view-toggle { display: flex; gap: 8px; }
+.view-toggle button {
+  border: 2px solid var(--line);
+  background: transparent;
+  border-radius: 999px;
+  padding: 8px 18px;
+  font-weight: 800;
+  font-size: 16px;
+}
+.view-toggle button.on { background: var(--pin); color: #fff; border-color: var(--pin); }
+#view3d {
+  position: relative;
+  width: 100%;
+  border-radius: 16px;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 30%, var(--card-2), var(--card));
+  cursor: grab;
+  touch-action: none;
+}
+#view3d canvas { display: block; }
+.v3-hud {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: rgba(27, 22, 66, 0.78);
+  color: #fff;
+  font-weight: 800;
+  font-size: 15px;
+  pointer-events: none;
+}
+.v3-hud:empty { display: none; }
+body.compact .panel-head p { font-size: clamp(14px, 1.25vw, 17px); max-height: 7.2em; overflow-y: auto; padding-bottom: 1.2em; scrollbar-width: thin; }
+body.compact .panel-head p.more { -webkit-mask-image: linear-gradient(#000 70%, transparent); mask-image: linear-gradient(#000 70%, transparent); }
+body.compact #personCard { display: none !important; }
+.list-title { font-weight: 800; font-size: 16px; opacity: 0.8; margin-top: 4px; }
+.place-list { display: flex; gap: 10px; overflow-x: auto; padding: 2px 2px 6px; scrollbar-width: thin; }
+.place-list .chip { flex: none; }
+.place-list .chip { font-size: 16px; padding: 10px 18px; }
+.place-list .chip.on { border-color: var(--pin); }
+.people-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.people-list button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border: 2px solid var(--line);
+  background: var(--card-2);
+  border-radius: 18px;
+  padding: 12px 14px;
+}
+.people-list .avatar { width: 46px; height: 46px; font-size: 17px; }
+.people-list .name { font-weight: 800; font-size: 17px; line-height: 1.2; }
+.people-list .role { font-size: 14px; opacity: 0.75; }
+[hidden] { display: none !important; }
+
+.status { position: fixed; bottom: 1vh; left: 2vw; font-size: 12px; line-height: 1.3; color: var(--muted); max-width: 44vw; text-align: left; z-index: 6; }
+body.has-panel .stage { padding-bottom: 5vh; }
+
+/* Map setup mode (welcome-kiosk.html?setup) */
+body.setup .stage { display: none; }
+body.setup .panel { left: 50%; right: auto; width: min(1100px, 94vw, calc((100vh - 280px) * 1.43)); transform: translateX(-50%); }
+body.setup .map-wrap { cursor: crosshair; }
+.setup-box { font-size: 17px; line-height: 1.5; }
+.setup-box code { font-size: 18px; font-weight: 800; background: var(--bg); color: var(--text); padding: 2px 8px; border-radius: 6px; }
+
+/* Portrait screens: panel slides up from the bottom */
+@media (orientation: portrait) {
+  body.has-panel .stage { width: 100vw; justify-content: flex-start; padding-top: 12vh; }
+  body.has-panel .chips, body.has-panel .hint { display: none; }
+  .panel { top: auto; left: 3vw; right: 3vw; width: auto; height: 52vh; transform: translateY(110%); }
+  body.has-panel .panel { transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="brand" id="brand"></div>
+  <div class="timers" id="timers"></div>
+  <div class="clock"><div class="time" id="time"></div><div class="date" id="date"></div></div>
+</header>
+
+<main class="stage" id="stage">
+  <div class="face">
+    <div class="eyes" id="eyes"><div class="eye"></div><div class="eye"></div></div>
+    <div class="mouth"></div>
+  </div>
+
+  <div class="talk">
+    <div class="you" id="you"></div>
+    <div class="bubble" id="bot"></div>
+  </div>
+
+  <div class="chips" id="chips"></div>
+
+  <form class="type-row" id="typeForm" autocomplete="off">
+    <input id="typeBox" type="text" placeholder="Ask me anything, e.g. Where is the boardroom?" aria-label="Type a question">
+    <button class="send" type="submit">Send</button>
+  </form>
+  <div class="hint" id="hint"></div>
+</main>
+
+<aside class="panel" id="panel" aria-live="polite">
+  <div class="panel-head">
+    <div><h2 id="pTitle"></h2><p id="pText" onscroll="this.classList.toggle('more', this.scrollTop + this.clientHeight < this.scrollHeight - 4)"></p></div>
+    <button class="close" id="pClose" type="button">Close</button>
+  </div>
+  <div class="person" id="personCard" hidden>
+    <div class="avatar" id="pAvatar"></div>
+    <div><div class="name" id="pName"></div><div class="role" id="pRole"></div></div>
+  </div>
+  <div class="view-toggle" id="viewToggle" hidden>
+    <button type="button" id="btnWalk">Walk-through</button>
+    <button type="button" id="btn3d">3D overview</button>
+    <button type="button" id="btn2d">2D map</button>
+  </div>
+  <div id="view3d" hidden></div>
+  <div class="floor-tabs" id="floorTabs"></div>
+  <div class="floor-note" id="floorNote" hidden></div>
+  <div class="map-wrap" id="mapWrap"></div>
+  <div id="placeBox"><div class="list-title" id="placeTitle">Tap a place to see where it is</div><div class="place-list" id="placeList"></div></div>
+  <div class="people-list" id="peopleList" hidden></div>
+  <div id="voiceBox" hidden>
+    <p class="pc-text" id="vcText">Tap Listen to hear a voice, then Use this voice.</p>
+    <div class="vc-sliders">
+      <label>Pitch <b id="vcPitchV"></b><input id="vcPitch" type="range" min="0.5" max="2" step="0.05"></label>
+      <label>Speed <b id="vcRateV"></b><input id="vcRate" type="range" min="0.7" max="1.5" step="0.05"></label>
+    </div>
+    <div id="vcList"></div>
+    <div class="chips pc-btns" id="vcBtns"></div>
+  </div>
+  <div id="lightsBox" hidden>
+    <p class="pc-text" id="ltText"></p>
+    <div id="ltRows"></div>
+    <div class="chips pc-btns" id="ltBtns"></div>
+    <div id="ltPin" hidden><div id="ltDots"></div><div id="ltKeys"></div></div>
+  </div>
+  <div id="parcelBox" hidden>
+    <p class="pc-text" id="pcText"></p>
+    <div class="pc-media" id="pcCamera"><video id="pcVideo" autoplay playsinline muted></video><div class="pc-frame"></div></div>
+    <div class="pc-media" id="pcPhoto" hidden><img id="pcImg" alt="Photo of the parcel label"><div class="pc-status" id="pcStatus"></div></div>
+    <div id="pcChoose" hidden><div id="pcList" class="people-list"></div></div>
+    <div class="pc-done" id="pcDone" hidden><div class="pc-tick">✓</div><p id="pcDoneText"></p></div>
+    <div class="chips pc-btns" id="pcBtns"></div>
+  </div>
+  <div class="setup-box" id="setupBox" hidden>
+    Click on your map where a place is. Copy these numbers into <b>office-info.txt</b>:
+    <div style="margin-top:8px">X | Y = <code id="setupCoords">click the map</code></div>
+  </div>
+</aside>
+
+<div class="big-count" id="bigCount" hidden><span id="bigNum"></span><button type="button" id="bigStop" class="chip">Stop countdown</button></div>
+<div class="status" id="status"></div>
+<div class="diag" id="diag" hidden></div>
+
+<script src="three.min.js"></script>
+<script src="orbit-controls.js"></script>
+<script src="building-3d.js"></script>
+<script>
+/* =========================================================
+   SETTINGS (company, floors, places and people go in office-info.txt)
+   ========================================================= */
+const CONFIG = {
+  infoFile: "office-info.txt",
+  logoImage: "",                    // e.g. "logo.png". Blank = show the company name as text
+
+  useAI: true,                      // false = answer straight from the document (fast, no Ollama)
+  ollamaUrl: "http://localhost:11434/api/chat",
+  model: "auto",                    // "auto" = the smartest model this PC can run fast (see kiosk-manifest.json), or a
+                                    // name from `ollama list` such as "qwen3:4b-instruct" (plain "qwen3:4b" thinks out loud, slow);
+                                    // on a PC with less than 8 GB memory use "qwen2.5:1.5b" or "qwen2.5:0.5b"
+  internet: true,                   // let Cubot look things up online (news, weather, general questions). Needs
+                                    // kiosk-server.py running (start-kiosk.bat does it). Add a free Ollama key to
+                                    // office-info.txt [INTERNET] for full web search; without it, Wikipedia + weather only.
+
+  botName: "Cubot",
+  companyName: "SPACElogic",
+  quickQuestions: [                 // extra buttons. label = button text, ask = question sent
+    { label: "About us", ask: "Tell me about SPACElogic" },
+    { label: "Opening hours", ask: "What are your opening hours?" }
+  ],
+
+  voiceHint: "auto",                // "auto" = the cutest voice this PC has (list below). Or part of a voice name, e.g. "Zira".
+                                    // Easiest: type "change voice" on the kiosk (or press F8), listen, and tap "Use this voice".
+  cuteVoices: [                     // tried in this order when voiceHint is "auto"
+    { match: "Ana Online", pitch: 1.1, rate: 1.0 },             // a child's voice: Microsoft Edge only, needs internet
+    { match: "Google US English", pitch: 1.35, rate: 1.05 },    // Chrome, needs internet
+    { match: "Google UK English Female", pitch: 1.3, rate: 1.05 },
+    { match: "Zira", pitch: 1.6, rate: 1.1 }                    // built into Windows, works offline
+  ],
+  speechLang: "en-US",
+  speechRate: 1.05,                 // used with voiceHint set to a name
+  speechPitch: 1.3,                 // 1 = normal, higher = cuter (max 2)
+  handsFree: false,
+  resetAfterSec: 45,                // back to the welcome screen after this much inactivity
+  start3D: true,                    // try 3D first; falls back to the 2D map if this PC can't show 3D
+  startView: "walk",                // "walk" = walk-through (first person), "overview" = whole building, "2d" = flat map
+  hideCursor: false,                // true for touch screens
+
+  wakeWord: "auto",                 // always listen for "Hey Cubot". "auto" = on this PC if it can, otherwise the browser's
+                                    // online speech service (Google in Chrome). "local" = only on this PC, "off" = tap or type only
+  wakeAliases: ["cube bot", "q bot", "cue bot", "queue bot", "cute bot", "cool bot", "cubit", "qubit", "kubo", "kubot",
+                "cubo", "cuba", "cube", "cubert", "kubert"],    // what speech recognition sometimes hears instead of the name
+
+  greetPeople: true,                // say hello when the camera sees a face close to the kiosk (nothing is saved or sent)
+  greetFaceSize: 0.06,              // how close: face width as a share of the camera picture. 0.06 is about 1.8 m with a normal
+                                    // webcam, 0.1 about 1 m; bigger = closer. Press F9 on the kiosk to see your face size live
+  greetAfterAwaySec: 20,            // greet again only after nobody has been close for this long
+
+  lights: {                         // office lights (the ESP32 smart switch). Works only on the office network
+    url: "https://ogxuwchojexznsxvvdhi.supabase.co",
+    key: "sb_publishable_pB5HMEXMjVDQiNcWlenV1A_ETc2qaNP",
+    room: "Makerspace",
+    names: ["Ceiling lights", "Wall spotlights"],                    // light 1 = left switch, light 2 = right switch
+    words: [["ceiling", "square", "ring", "main", "white"], ["wall", "spot", "spotlight", "spotlights", "warm"]],   // "square light", "wall light", "spotlight"...
+    button: true,                   // show a Lights button on the welcome screen
+    pin: ""                         // e.g. "2580" so only staff can switch the lights. Blank = anyone at the kiosk can
+  }
+};
+/* This PC's own settings live in kiosk-config.json (kiosk-server.py mixes them in), so GitHub updates never
+   overwrite them. Example kiosk-config.json:  { "model": "qwen3:8b", "greetPeople": false, "lights": { "pin": "1234" } } */
+(function applyOverrides(target, extra) {
+  for (const [k, v] of Object.entries(extra || {})) {
+    if (v && typeof v === "object" && !Array.isArray(v) && target[k] && typeof target[k] === "object" && !Array.isArray(target[k])) applyOverrides(target[k], v);
+    else target[k] = v;
+  }
+})(CONFIG, window.KIOSK_OVERRIDES);
+/* ========================================================= */
+
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const SETUP = Q.has("setup");
+const VOICES = Q.has("voices");
+let state = "idle";
+let history = [];
+let lastActivity = Date.now();
+let resetDone = true;
+let speakQueue = [];
+let streamDone = true;
+let INFO = { chunks: [], floors: [], locations: [], people: [], here: null, kioskDirs: {} };
+let viewFloor = null;
+let panelTarget = null;
+const statusNotes = {};
+const WAKE = { on: false, local: false, rec: null, running: false, hold: false, armedUntil: 0, inUtterance: false, muteUntil: 0, retryMs: 400, forceCloud: false, heard: "", heardAt: 0, matched: "" };
+const SEE = { on: false, fd: null, video: null, stream: null, busy: false, paused: false, hits: 0, awayFor: 0, arrived: 0, greeted: false, lastNear: 0, lastWidth: 0, lastFrame: 0, lastGreet: 0, resumeTimer: 0 };
+let faceLook = 0;
+
+const ICON = {
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  person: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg>',
+  box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>',
+  bulb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2.2h5c.1-1 .5-1.700 1.100-2.200A6 6 0 0 0 12 3z"/></svg>',
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>'
+};
+
+/* ---------------- Read the document ---------------- */
+function parseInfo(text) {
+  const sections = {};
+  let current = "GENERAL";
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.replace(/\s+$/, "");
+    if (/^\s*#/.test(line)) continue;
+    const head = line.match(/^\s*\[(.+?)\]\s*$/);
+    if (head) { current = head[1].trim().toUpperCase(); continue; }
+    (sections[current] = sections[current] || []).push(line);
+  }
+  const rows = name => (sections[name] || []).filter(l => l.trim()).map(l => l.split("|").map(s => s.trim()));
+  const list = s => (s || "").split(",").map(x => x.trim().toLowerCase()).filter(Boolean);
+
+  const floors = rows("FLOORS").filter(p => p[0] && !isNaN(parseFloat(p[0])))
+    .map(p => ({ n: parseFloat(p[0]), name: p[1] || "Level " + p[0], map: p[2] || "" }));
+  if (!floors.length) floors.push({ n: 1, name: "Office", map: "office-map.svg" });
+
+  let here = { floor: floors[0].n, x: NaN, y: NaN, name: "" };
+  let hereName = (Q.get("here") || "").replace(/[_+]/g, " ").trim();      // ?here=Main entrance overrides the file
+  const hereLine = (sections["YOU ARE HERE"] || []).find(l => l.trim());
+  if (!hereName && hereLine) {
+    const n = hereLine.split(/[,|\s]+/).map(parseFloat).filter(v => !isNaN(v));
+    if (n.length >= 3) here = { floor: n[0], x: n[1], y: n[2], name: "" };
+    else if (n.length === 2) here = { floor: floors[0].n, x: n[0], y: n[1], name: "" };
+    else hereName = hereLine.trim();
+  }
+
+  const locations = rows("LOCATIONS").filter(p => p[0]).map(p => {
+    const multi = p.length >= 6 && !isNaN(parseFloat(p[2]));   // Name | words | level | directions | x | y
+    return {
+      name: p[0],
+      aliases: list(p[1]),
+      floor: multi ? parseFloat(p[2]) : here.floor,
+      directions: (multi ? p[3] : p[2]) || "",
+      x: parseFloat(multi ? p[4] : p[3]),
+      y: parseFloat(multi ? p[5] : p[4])
+    };
+  });
+
+  if (hereName) {
+    const spot = locations.find(l => l.name.toLowerCase() === hereName.toLowerCase());
+    if (spot) here = { floor: spot.floor, x: spot.x, y: spot.y, name: spot.name };
+    else setTimeout(() => setStatus(`Kiosk spot "${hereName}" is not in [LOCATIONS]. Check the name under [YOU ARE HERE].`), 500);
+  }
+  const kioskDirs = {};
+  for (const [name, lines] of Object.entries(sections)) {
+    const m = name.match(/^KIOSK DIRECTIONS\s*:\s*(.+)$/);
+    if (!m || m[1].trim().toLowerCase() !== (here.name || "").toLowerCase()) continue;
+    for (const l of lines) {
+      const i = l.indexOf("|");
+      if (i > 0) kioskDirs[l.slice(0, i).trim().toLowerCase()] = l.slice(i + 1).trim();
+    }
+  }
+
+  const lights = {};
+  rows("LIGHTS").forEach(p => {
+    const k = (p[0] || "").toLowerCase();
+    if (/^light [12]$/.test(k)) lights[k] = { name: p[1] || "", words: list(p[2]) };
+    else if (k) lights[k] = p[1] || "";
+  });
+  const telegram = {};
+  rows("TELEGRAM").forEach(p => { if (p[0]) telegram[p[0].toLowerCase()] = p[1] || ""; });
+  const stairs = rows("STAIRS").filter(p => !isNaN(parseFloat(p[0])) && !isNaN(parseFloat(p[1])))
+    .map(p => ({ from: parseFloat(p[0]), to: parseFloat(p[1]), how: p[2] || "", name: p[3] || "stairs" }));
+
+  const people = rows("PEOPLE").filter(p => p[0]).map(p => ({
+    name: p[0], role: p[1] || "", place: p[2] || "", aliases: list(p[3]), telegram: (p[4] || "").trim()
+  })).sort((a, b) => a.name.localeCompare(b.name));
+
+  const chunks = [];
+  for (const [name, lines] of Object.entries(sections)) {
+    if (["LOCATIONS", "PEOPLE", "YOU ARE HERE", "FLOORS", "STAIRS", "TELEGRAM", "LIGHTS", "INTERNET"].includes(name) || name.startsWith("KIOSK DIRECTIONS")) continue;
+    const paras = lines.join("\n").split(/\n\s*\n/).map(s => s.replace(/\s+/g, " ").trim()).filter(Boolean);
+    for (const para of paras) chunks.push({ text: para, words: new Set(words(name + " " + para)) });
+  }
+  return { chunks, floors, locations, people, here, kioskDirs, stairs, telegram, lights };
+}
+
+async function loadInfo() {
+  try {
+    const res = await fetch(CONFIG.infoFile + "?t=" + Date.now());
+    if (!res.ok) throw new Error(res.status);
+    INFO = parseInfo(await res.text());
+  } catch (e) {
+    INFO.floors = [{ n: 1, name: "Office", map: "office-map.svg" }];
+    INFO.here = { floor: 1, x: NaN, y: NaN };
+    setStatus(`Can't load ${CONFIG.infoFile}. Keep it next to this page and open the page through http://localhost:8000`);
+  }
+  viewFloor = INFO.here.floor;
+  buildFloorTabs();
+  buildLists();
+}
+
+/* ---------------- Matching ---------------- */
+const STOP = new Set(("a an the is are was were be been to of in on at for and or but with what who whom where when how why " +
+  "do does did can could would should will you your yours our ours i me my we us it its this that these those there here " +
+  "please tell about any have has had am im just want know like get some more much many so if then than also").split(" "));
+function words(s) {
+  return (s.toLowerCase().match(/[a-z0-9]+/g) || [])
+    .filter(w => w.length > 1 && !STOP.has(w))
+    .map(w => (w.length > 3 && w.endsWith("s") ? w.slice(0, -1) : w));
+}
+function findChunks(question, max = 3) {
+  const q = words(question);
+  return INFO.chunks
+    .map(c => ({ c, score: q.reduce((n, w) => n + (c.words.has(w) ? 1 : 0), 0) }))
+    .filter(r => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, max)
+    .map(r => r.c);
+}
+const tokens = s => s.toLowerCase().replace(/[^a-z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+const norm = s => " " + tokens(s).join(" ") + " ";
+
+function findLocation(text) {
+  const t = norm(text);
+  let best = null, bestLen = 0;
+  for (const loc of INFO.locations) {
+    for (const term of [loc.name, ...loc.aliases]) {
+      const n = norm(term).trim();
+      const better = n.length > bestLen || (n.length === bestLen && best && best.loc.floor !== INFO.here.floor && loc.floor === INFO.here.floor);
+      if (n.length >= 2 && t.includes(" " + n + " ") && better) { best = { loc, multiWord: n.includes(" ") }; bestLen = n.length; }
+    }
+  }
+  return best;
+}
+
+// Words that are also people's surnames but common in sentences
+const NAME_STOP = new Set(["see", "low", "saw", "boo", "can", "ang", "aw", "er", "oo", "ho", "ng", "tay", "neo", "lee", "chan", "tan", "lim", "ong", "goh", "koh", "yew", "wong", "soh", "seah", "luo", "lai", "kok", "siew", "sin", "tun", "oo"]);
+function nameScore(textTokens, name) {
+  const nt = tokens(name);
+  let best = 0;
+  for (let i = 0; i < nt.length; i++) {
+    for (let j = 0; j < textTokens.length; j++) {
+      let k = 0;
+      while (i + k < nt.length && j + k < textTokens.length && nt[i + k] === textTokens[j + k]) k++;
+      if (k > best) best = k;
+    }
+  }
+  if (best === 1) {
+    // a single word only counts if it's a real given name, not a common word or very common surname
+    const hit = nt.find(w => textTokens.includes(w));
+    if (!hit || hit.length < 3 || NAME_STOP.has(hit)) return 0;
+  }
+  return best ? best + (best === nt.length ? 0.5 : 0) : 0;
+}
+function findPeople(text) {
+  const tt = tokens(text);
+  let top = 0, hits = [];
+  for (const p of INFO.people) {
+    let sc = Math.max(nameScore(tt, p.name), ...p.aliases.map(a => nameScore(tt, a)), 0);
+    const rw = tokens(p.role).length;                                      // job title match, e.g. "the finance manager"
+    if (!sc && rw >= 2 && norm(text).includes(norm(p.role))) sc = 0.5 + rw * 0.05;
+    if (sc > top) { top = sc; hits = [p]; } else if (sc && sc === top) hits.push(p);
+  }
+  return hits;
+}
+const placeOf = person => INFO.locations.find(l => l.name.toLowerCase() === person.place.toLowerCase());
+const floorOf = n => INFO.floors.find(f => f.n === n) || { n, name: "Level " + n, map: "" };
+const WANTS_DIRECTIONS = /\b(where|find|way|direction|directions|locat\w*|go to|get to|show me|take me|lead|nearest|toilet|washroom|restroom|bathroom)\b/i;
+const initials = name => name.split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+
+const theName = loc => (/'/.test(loc.name) ? loc.name : "the " + loc.name);
+function stairPlan(from, to) {
+  const legs = [], step = to > from ? 1 : -1;
+  for (let f = from; f !== to; f += step) {
+    const s = (INFO.stairs || []).find(x => x.from === f && x.to === f + step);
+    if (!s) return null;
+    legs.push(s);
+  }
+  return legs;
+}
+function fullDirections(loc) {
+  const kd = INFO.kioskDirs || {}, here = INFO.here.floor;
+  if (loc.floor === here) return kd[loc.name.toLowerCase()] || loc.directions;
+  const dir = loc.floor > here ? "up" : "down";
+  const legs = stairPlan(here, loc.floor);
+  if (!legs) return `${kd["to lift"] ? kd["to lift"] + " " : ""}Take the lift ${dir} to ${floorOf(loc.floor).name}. ${loc.directions}`;
+  const out = [];
+  legs.forEach((L, i) => {
+    const how = i === 0 ? (kd["to stairs"] || L.how) : L.how;
+    const go = `Take the ${L.name} ${dir} to ${floorOf(L.to).name}.`;
+    if (!how && i > 0 && legs[i - 1].name === L.name) out[out.length - 1] = go;   // same stairs: keep going
+    else { if (how) out.push(how); out.push(go); }
+  });
+  return out.join(" ") + " " + loc.directions;
+}
+
+/* ---------------- Map ---------------- */
+function buildFloorTabs() {
+  const box = $("floorTabs");
+  box.innerHTML = "";
+  box.hidden = INFO.floors.length < 2;
+  for (const f of INFO.floors) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = f.name.replace(/^level\s*/i, "L") + (f.n === INFO.here.floor ? " · You" : "");
+    b.dataset.floor = f.n;
+    b.addEventListener("click", () => { activity(); stopRouteTour(); showFloor(f.n); });
+    box.appendChild(b);
+  }
+}
+function showFloor(n) {
+  viewFloor = n;
+  const f = floorOf(n);
+  document.querySelectorAll("#floorTabs button").forEach(b => {
+    b.classList.toggle("on", +b.dataset.floor === n);
+    b.classList.toggle("has-target", !!panelTarget && panelTarget.floor === +b.dataset.floor);
+  });
+  const wrap = $("mapWrap");
+  wrap.innerHTML = "";
+  const img = new Image();
+  img.alt = f.name + " floor plan";
+  img.onload = fitMap;
+  img.onerror = () => {
+    img.remove();
+    const miss = document.createElement("div");
+    miss.className = "map-missing";
+    miss.textContent = `Map image "${f.map}" not found. Put it in this folder, or fix the file name in [FLOORS].`;
+    wrap.prepend(miss);
+  };
+  img.src = f.map + "?t=" + Date.now();
+  wrap.appendChild(img);
+  drawPins();
+  // place buttons for this floor
+  const places = INFO.locations.filter(l => l.floor === n);
+  $("placeTitle").textContent = `Places on ${f.name}`;
+  document.querySelectorAll("#placeList .chip").forEach(c => { c.hidden = +c.dataset.floor !== n; });
+  $("placeBox").hidden = !places.length || !!panelTarget?.person || SETUP;
+  const note = $("floorNote");
+  note.classList.remove("clickable");
+  note.onclick = null;
+  const order = routeFloors();
+  if (order.length > 1 && order.includes(n)) {
+    const i = order.indexOf(n), next = order[i + 1];
+    const leg = panelRoute.parts.find(p => p.vertical && p.from === n);
+    note.hidden = false;
+    note.textContent = `Step ${i + 1} of ${order.length} · ${f.name}: ` + (next
+      ? `then take the ${leg && leg.mode === "lift" ? "lift" : "stairs"} ${next > n ? "up" : "down"} to ${floorOf(next).name} ›`
+      : `you've arrived`);
+    if (next) { note.classList.add("clickable"); note.onclick = () => { activity(); stopRouteTour(); showFloor(next); }; }
+  } else if (panelTarget && n !== panelTarget.floor) {
+    note.hidden = false;
+    note.textContent = `${panelTarget.name} is on ${floorOf(panelTarget.floor).name}. Tap that level to see it.`;
+  } else note.hidden = true;
+}
+function fitMap() {
+  const panel = $("panel");
+  const v3 = $("view3d");
+  if (!v3.hidden) {
+    let other = 48;
+    for (const el of panel.children) {
+      if (el === v3 || el.hidden || getComputedStyle(el).display === "none") continue;
+      other += el.offsetHeight + 14;
+    }
+    const portrait = innerHeight > innerWidth;
+    v3.style.height = Math.max(240, (portrait ? innerHeight * 0.52 : innerHeight * 0.87) - other) + "px";
+    size3D();
+    return;
+  }
+  const wrap = $("mapWrap");
+  const img = wrap.querySelector("img");
+  if (!img || !img.naturalWidth) return;
+  const portrait = innerHeight > innerWidth;
+  let other = 48;                                       // panel padding
+  for (const el of panel.children) {
+    if (el === wrap || el.hidden || getComputedStyle(el).display === "none") continue;
+    other += el.offsetHeight + 14;                      // 14 = gap
+  }
+  const availH = Math.max(220, (portrait ? innerHeight * 0.52 : innerHeight * 0.87) - other);
+  const availW = panel.clientWidth - 48;
+  const w = Math.max(200, Math.min(availW, availH * img.naturalWidth / img.naturalHeight));
+  wrap.style.width = w + "px";
+}
+addEventListener("resize", fitMap);
+
+function drawPins() {
+  const wrap = $("mapWrap");
+  wrap.querySelectorAll(".pin").forEach(p => p.remove());
+  const add = (x, y, cls, label) => {
+    if (isNaN(x) || isNaN(y)) return;
+    const pin = document.createElement("div");
+    pin.className = "pin " + cls + (cls === "here" && x > 70 ? " flip" : "");
+    pin.style.left = x + "%";
+    pin.style.top = y + "%";
+    pin.innerHTML = '<div class="dot"></div>';
+    if (label) {
+      const l = document.createElement("div");
+      l.className = "label";
+      l.textContent = label;
+      if (cls !== "here" && x < 15) { l.style.left = "-8px"; l.style.transform = "translate(0, -100%)"; }
+      if (cls !== "here" && x > 85) { l.style.left = "auto"; l.style.right = "-8px"; l.style.transform = "translate(0, -100%)"; }
+      if (cls !== "here" && y < 12) { l.style.top = "auto"; l.style.bottom = "-10px"; l.style.transform = l.style.transform.replace("-100%", "100%") || "translate(-50%, 100%)"; }
+      pin.appendChild(l);
+    }
+    wrap.appendChild(pin);
+  };
+  if (SETUP) for (const loc of INFO.locations) if (loc.floor === viewFloor) add(loc.x, loc.y, "", loc.name);
+  if (INFO.here.floor === viewFloor) add(INFO.here.x, INFO.here.y, "here", "You are here");
+  const t = panelTarget;
+  if (t && t.floor === viewFloor) add(t.x, t.y, "target", t.person ? t.person.name : t.name);
+  drawRoute2D(add);
+}
+function buildLists() {
+  const places = $("placeList");
+  places.innerHTML = "";
+  for (const loc of INFO.locations) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.dataset.place = loc.name;
+    b.dataset.floor = loc.floor;
+    b.innerHTML = ICON.pin;
+    b.append(loc.name);
+    b.addEventListener("click", () => goToPlace(loc));
+    places.appendChild(b);
+  }
+  renderPeople(INFO.people);
+  buildChips();
+}
+function renderPeople(list) { renderPeopleInto($("peopleList"), list, goToPerson); }
+function renderPeopleInto(box, list, onPick) {
+  box.innerHTML = "";
+  for (const p of list) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.innerHTML = `<div class="avatar"></div><div><div class="name"></div><div class="role"></div></div>`;
+    b.querySelector(".avatar").textContent = initials(p.name);
+    b.querySelector(".name").textContent = p.name;
+    b.querySelector(".role").textContent = p.role;
+    b.addEventListener("click", () => onPick(p));
+    box.appendChild(b);
+  }
+}
+
+/* ---------------- Panel ---------------- */
+function openPanel({ mode, loc = null, person = null, people = null, title = null }) {
+  const isPeople = mode === "people";
+  stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true;
+  panelTarget = loc ? { ...loc, person } : null;
+  stopRouteTour();
+  panelRoute = null;
+  document.body.classList.toggle("compact", !!loc);
+  if (loc && window.BUILDING && !SETUP) { try { panelRoute = planRoute(loc); } catch (e) { console.warn(e); } }
+  $("pTitle").textContent = title || (isPeople ? "Find a person" : person ? `Finding ${person.name}${person.role ? " · " + person.role : ""}` : loc ? loc.name : "Office map");
+  $("pText").textContent = isPeople ? "Tap a name to see where they sit."
+    : loc ? fullDirections(loc) + (person ? " If you have an appointment, please let us know who you're here to see." : "")
+    : person ? "Please ask a staff member to help you reach them."
+    : "Pick a level, then tap a place.";
+  requestAnimationFrame(() => { const pt = $("pText"); pt.classList.toggle("more", pt.scrollHeight > pt.clientHeight + 4); pt.scrollTop = 0; });
+  $("personCard").hidden = !person;
+  if (person) {
+    $("pAvatar").textContent = initials(person.name);
+    $("pName").textContent = person.name;
+    $("pRole").textContent = person.role;
+  }
+  const showMap = !isPeople && !(person && !loc);
+  $("mapWrap").hidden = !showMap;
+  $("floorTabs").hidden = !showMap || INFO.floors.length < 2;
+  $("floorNote").hidden = true;
+  $("peopleList").hidden = !isPeople;
+  if (isPeople) { renderPeople(people || INFO.people); $("placeBox").hidden = true; }
+  document.querySelectorAll("#placeList .chip").forEach(c => c.classList.toggle("on", !!loc && c.dataset.place === loc.name));
+  document.body.classList.add("has-panel");
+  if (showMap) showFloor(loc ? loc.floor : (viewFloor ?? INFO.here.floor));
+  const can3D = V3.ok && !!loc && !SETUP;
+  $("viewToggle").hidden = !can3D;
+  setView(can3D && CONFIG.start3D ? (CONFIG.startView === "overview" ? "3d" : CONFIG.startView === "2d" ? "2d" : "walk") : "2d");
+  $("panel").scrollTop = 0;
+}
+let viewMode = "2d";
+let panelRoute = null, routeTimer = 0;
+function routeFloors() {
+  if (!panelRoute) return [];
+  const order = [];
+  panelRoute.parts.forEach(p => { if (!p.vertical && !order.includes(p.floor)) order.push(p.floor); });
+  return order;
+}
+function startRouteTour(order) {
+  stopRouteTour();
+  let i = 0;
+  showFloor(order[0]);
+  routeTimer = setInterval(() => { i = (i + 1) % order.length; showFloor(order[i]); }, 6000);
+}
+function stopRouteTour() { clearInterval(routeTimer); routeTimer = 0; }
+
+/* Dotted walking line on the 2D map (uses the same route as the 3D view) */
+function drawRoute2D(addPin) {
+  const wrap = $("mapWrap");
+  wrap.querySelectorAll(".route-svg").forEach(e => e.remove());
+  if (!panelRoute || !window.BUILDING) return;
+  const f = BUILDING.floors[viewFloor];
+  if (!f) return;
+  const [vx, vy, vw, vh] = f.vb;
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("class", "route-svg");
+  svg.setAttribute("viewBox", `${vx} ${vy} ${vw} ${vh}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  for (const part of panelRoute.parts) {
+    if (part.vertical || part.floor !== viewFloor || part.pts.length < 2) continue;
+    const pts = part.pts.map(p => p.join(",")).join(" ");
+    for (const cls of ["halo", "dash"]) {
+      const line = document.createElementNS(NS, "polyline");
+      line.setAttribute("points", pts);
+      line.setAttribute("class", cls);
+      svg.appendChild(line);
+    }
+  }
+  wrap.insertBefore(svg, wrap.querySelector(".pin"));
+  const pct = p => [(p[0] - vx) / vw * 100, (p[1] - vy) / vh * 100];
+  for (const part of panelRoute.parts) {
+    if (!part.vertical) continue;
+    const kind = part.mode === "lift" ? "Lift" : "Stairs";
+    if (part.from === viewFloor) { const [x, y] = pct(part.a); addPin(x, y, "step", `${kind} ${part.to > part.from ? "up" : "down"} to L${part.to}`); }
+    if (part.to === viewFloor) { const [x, y] = pct(part.b); addPin(x, y, "step", `From L${part.from}`); }
+  }
+}
+function setView(mode) {
+  viewMode = mode;
+  const is3 = mode !== "2d" && !$("viewToggle").hidden;
+  if (!is3) viewMode = "2d";
+  $("btnWalk").classList.toggle("on", is3 && mode === "walk");
+  $("btn3d").classList.toggle("on", is3 && mode === "3d");
+  $("btn2d").classList.toggle("on", !is3);
+  $("view3d").hidden = !is3;
+  document.body.classList.toggle("mode-3d", is3);
+  if (is3) {
+    $("mapWrap").hidden = true;
+    $("floorTabs").hidden = true;
+    $("floorNote").hidden = true;
+    $("placeBox").hidden = true;
+  } else {
+    stop3D();
+    if (panelTarget) {
+      $("mapWrap").hidden = false;
+      $("floorTabs").hidden = INFO.floors.length < 2;
+      const order = routeFloors();
+      if (order.length > 1) startRouteTour(order); else showFloor(panelTarget.floor);
+    }
+  }
+  requestAnimationFrame(() => {
+    fitMap();
+    if (is3 && panelTarget) show3D(panelTarget, panelTarget.person);
+  });
+}
+function closePanel() {
+  if (SETUP) return;
+  stopCamera();
+  parcelPicking = false;
+  $("parcelBox").hidden = true;
+  $("lightsBox").hidden = true;
+  $("voiceBox").hidden = true;
+  stop3D();
+  stopRouteTour();
+  panelRoute = null;
+  $("view3d").hidden = true;
+  document.body.classList.remove("has-panel", "mode-3d", "compact");
+  panelTarget = null;
+}
+
+function goToPlace(loc) {
+  activity();
+  openPanel({ mode: "map", loc });
+  $("you").textContent = "";
+  const lvl = loc.floor !== INFO.here.floor ? ` on ${floorOf(loc.floor).name}` : "";
+  say(`Here's ${theName(loc)}. ${fullDirections(loc)}`, `Here's ${theName(loc)}${lvl}. Follow the route on the right.`);
+}
+function goToPerson(p) {
+  activity();
+  const loc = placeOf(p);
+  openPanel({ mode: "map", loc, person: p });
+  $("you").textContent = "";
+  const who = p.role ? `${p.name}, our ${p.role},` : p.name;
+  const lvl = loc && loc.floor !== INFO.here.floor ? ` on ${floorOf(loc.floor).name}` : "";
+  say(loc
+    ? `${who} sits in ${theName(loc)}. ${fullDirections(loc)}`
+    : `${who} works with us, but I'm not sure where they sit. Please ask a staff member to help you.`,
+    loc ? `${p.name} sits in ${theName(loc)}${lvl}. Follow the route on the right.` : undefined);
+}
+
+
+/* =========================================================
+   3D ROUTE VIEW (uses three.min.js + building-3d.js)
+   ========================================================= */
+function webglOK() {
+  try { const c = document.createElement("canvas"); return !!(window.WebGLRenderingContext && (c.getContext("webgl") || c.getContext("experimental-webgl"))); }
+  catch (e) { return false; }
+}
+const V3 = { ok: !!(window.THREE && window.BUILDING) && webglOK(), renderer: null, raf: 0, grids: {} };
+function fallback2D(why) {
+  console.warn("3D view not available, using 2D map:", why);
+  V3.ok = false;
+  stop3D();
+  $("viewToggle").hidden = true;
+  setView("2d");
+}
+// Plans are drawn on separate pages, so each level is shifted to line up the lift and stairs.
+const ALIGN = { 1: [-11, -58], 2: [0, 0], 3: [-300, 3], 4: [-300, 3], 5: [-300, 3], 6: [-300, 3] };
+const S3 = 0.1; let FH = 26;   // plan pixels -> 3D units, height of one level
+
+function pctToPx(floor, x, y) {
+  const f = BUILDING.floors[floor]; if (!f) return null;
+  const [vx, vy, vw, vh] = f.vb;
+  return [vx + x / 100 * vw, vy + y / 100 * vh];
+}
+function inPoly(p, poly) {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+}
+const inRect = (p, r) => p[0] >= r[0] && p[0] <= r[2] && p[1] >= r[1] && p[1] <= r[3];
+
+/* ---- walking route on one level (A* on a coarse grid) ---- */
+const CELL = 8;
+function gridFor(floor) {
+  if (V3.grids[floor]) return V3.grids[floor];
+  const f = BUILDING.floors[floor];
+  const [vx, vy, vw, vh] = f.vb;
+  const W = Math.ceil(vw / CELL), H = Math.ceil(vh / CELL);
+  const base = new Float32Array(W * H), room = new Int16Array(W * H).fill(-1);
+  const all = f.rooms.concat(f.outside);
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const p = [vx + (i + 0.5) * CELL, vy + (j + 0.5) * CELL];
+    let cost = inPoly(p, f.footprint) ? 1 : Infinity;
+    let idx = -1;
+    all.forEach((r, k) => { if (inRect(p, r.r)) idx = k; });
+    if (idx >= 0) {
+      const t = all[idx].type;
+      if (all[idx].noentry) cost = Infinity;          // no way through (e.g. Signpal office)
+      else if (t === "outdoor") cost = 1.5;
+      // rooms are walls to walk around, unless marked as a way through (the Signpal office)
+      else if (cost !== Infinity) cost = t === "open" ? 1 : all[idx].pass ? 1.5 : Infinity;
+    }
+    base[j * W + i] = cost; room[j * W + i] = idx;
+  }
+  return (V3.grids[floor] = { W, H, vx, vy, base, room, all });
+}
+function walk(floor, a, b) {
+  const g = gridFor(floor);
+  const cellOf = p => [Math.min(g.W - 1, Math.max(0, Math.floor((p[0] - g.vx) / CELL))), Math.min(g.H - 1, Math.max(0, Math.floor((p[1] - g.vy) / CELL)))];
+  const [si, sj] = cellOf(a), [gi, gj] = cellOf(b);
+  const okRooms = new Set([g.room[sj * g.W + si], g.room[gj * g.W + gi]].filter(k => k < 0 || !g.all[k].noentry));
+  const cost = (i, j) => {
+    if (i < 0 || j < 0 || i >= g.W || j >= g.H) return Infinity;
+    const k = j * g.W + i;
+    if (okRooms.has(g.room[k]) && g.room[k] >= 0) return 1;
+    return g.base[k];
+  };
+  const N = g.W * g.H, dist = new Float32Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1);
+  // A* with a binary heap: fast even when there's no way through
+  const heap = [], push = (f, k) => {
+    heap.push([f, k]);
+    for (let n = heap.length - 1; n > 0;) { const pa = (n - 1) >> 1; if (heap[pa][0] <= heap[n][0]) break; [heap[pa], heap[n]] = [heap[n], heap[pa]]; n = pa; }
+  }, pop = () => {
+    const topItem = heap[0], last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      for (let n = 0;;) {
+        const l = 2 * n + 1, r = l + 1; let m = n;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === n) break;
+        [heap[m], heap[n]] = [heap[n], heap[m]]; n = m;
+      }
+    }
+    return topItem;
+  };
+  const done = new Uint8Array(N);
+  push(0, sj * g.W + si); dist[sj * g.W + si] = 0;
+  const goal = gj * g.W + gi;
+  const h = k => Math.hypot(k % g.W - gi, Math.floor(k / g.W) - gj);
+  const DIRS = [[1,0,1],[-1,0,1],[0,1,1],[0,-1,1],[1,1,1.414],[1,-1,1.414],[-1,1,1.414],[-1,-1,1.414]];
+  while (heap.length) {
+    const k = pop()[1];
+    if (done[k]) continue;
+    done[k] = 1;
+    if (k === goal) break;
+    const i = k % g.W, j = Math.floor(k / g.W);
+    for (const [di, dj, dd] of DIRS) {
+      const c = cost(i + di, j + dj);
+      if (c === Infinity) continue;
+      if (di && dj && (cost(i + di, j) === Infinity || cost(i, j + dj) === Infinity)) continue;   // no squeezing past a corner
+      const nk = (j + dj) * g.W + i + di, nd = dist[k] + dd * c;
+      if (nd < dist[nk]) { dist[nk] = nd; prev[nk] = k; push(nd + h(nk), nk); }
+    }
+  }
+  if (prev[goal] < 0 && goal !== sj * g.W + si) return [a, b];      // no path found: straight line
+  const cells = []; for (let k = goal; k >= 0; k = prev[k]) cells.unshift(k);
+  const pts = cells.map(k => [g.vx + (k % g.W + 0.5) * CELL, g.vy + (Math.floor(k / g.W) + 0.5) * CELL]);
+  // straighten: skip points while the straight line stays on equally cheap cells,
+  // and never let a shortcut clip the corner of a room (checked against the real room shapes)
+  const cAt = p => { const [i, j] = cellOf(p); return cost(i, j); };
+  const fp = BUILDING.floors[floor].footprint;
+  const blockedAt = q => {
+    let top = -1;
+    g.all.forEach((r, k) => { if (inRect(q, r.r)) top = k; });
+    if (top < 0) return !inPoly(q, fp);
+    if (okRooms.has(top)) return false;
+    const r = g.all[top];
+    return !!r.noentry || !(r.type === "open" || r.type === "outdoor" || r.pass);
+  };
+  const clear = (p, q) => {
+    const lim = Math.max(cAt(p), cAt(q)), n = Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / (CELL / 2));
+    for (let s = 1; s < n; s++) { const c = cAt([p[0] + (q[0] - p[0]) * s / n, p[1] + (q[1] - p[1]) * s / n]); if (c > lim) return false; }
+    const fine = Math.ceil(Math.hypot(q[0] - p[0], q[1] - p[1]) / 2);
+    for (let s = 1; s < fine; s++) if (blockedAt([p[0] + (q[0] - p[0]) * s / fine, p[1] + (q[1] - p[1]) * s / fine])) return false;
+    return true;
+  };
+  const out = [a]; let cur = a, idx = 0;
+  while (idx < pts.length) {
+    let far = idx;
+    for (let t = pts.length - 1; t > idx; t--) if (clear(cur, pts[t])) { far = t; break; }
+    cur = pts[far]; out.push(cur); idx = far + 1;
+  }
+  out.push(b);
+  return out;
+}
+
+/* ---- full route: walk, stairs/lift, walk ---- */
+function stairLegs(from, to) {
+  const legs = [];
+  const step = to > from ? 1 : -1;
+  for (let f = from; f !== to; f += step) {
+    const s = BUILDING.stairs.find(x => (x.from === f && x.to === f + step) || (x.to === f && x.from === f + step));
+    const t = (INFO.stairs || []).find(x => x.from === f && x.to === f + step);
+    if (!s || !t) return null;
+    legs.push(s.from === f ? { from: f, to: f + step, a: s.a, b: s.b } : { from: f, to: f + step, a: s.b, b: s.a });
+  }
+  return legs;
+}
+function planRoute(loc) {
+  const h = INFO.here;
+  const start = pctToPx(h.floor, h.x, h.y), goal = pctToPx(loc.floor, loc.x, loc.y);
+  if (!start || !goal || isNaN(start[0]) || isNaN(goal[0])) return null;
+  let legs = loc.floor === h.floor ? [] : stairLegs(h.floor, loc.floor);
+  let mode = "stairs";
+  if (!legs) {
+    mode = "lift";
+    legs = [{ from: h.floor, to: loc.floor, a: BUILDING.lifts[h.floor], b: BUILDING.lifts[loc.floor] }];
+  }
+  const parts = []; let cur = start, fl = h.floor;
+  for (const L of legs) {
+    parts.push({ floor: fl, pts: walk(fl, cur, L.a) });
+    parts.push({ vertical: true, from: L.from, to: L.to, a: L.a, b: L.b, mode });
+    cur = L.b; fl = L.to;
+  }
+  // a no-entry room (like the Signpal office) is entered only through its door
+  const ne = (BUILDING.floors[fl].rooms || []).find(r => r.noentry && r.door && inRect(goal, r.r));
+  if (ne) { const pts = walk(fl, cur, ne.door); pts.push(goal); parts.push({ floor: fl, pts }); }
+  else parts.push({ floor: fl, pts: walk(fl, cur, goal) });
+  return { parts, mode, floors: [...new Set([h.floor, loc.floor, ...legs.map(l => l.to)])] };
+}
+
+/* ---- drawing ---- */
+function to3(floor, p, lift = 0) {
+  const [dx, dy] = ALIGN[floor] || [0, 0];
+  return new THREE.Vector3((p[0] + dx) * S3, (floor - 1) * FH + lift, (p[1] + dy) * S3);
+}
+let LS = 1;   // label scale, set per scene
+function label3(text, bg, fg, size = 1, screen = false) {
+  size *= LS;
+  const c = document.createElement("canvas"), x = c.getContext("2d");
+  const fs = 44; x.font = `800 ${fs}px Nunito, Segoe UI, sans-serif`;
+  const w = Math.ceil(x.measureText(text).width) + 40; c.width = w; c.height = fs + 30;
+  x.font = `800 ${fs}px Nunito, Segoe UI, sans-serif`;
+  x.fillStyle = bg; const r = c.height / 2;
+  x.beginPath(); x.moveTo(r, 0); x.arcTo(w, 0, w, c.height, r); x.arcTo(w, c.height, 0, c.height, r); x.arcTo(0, c.height, 0, 0, r); x.arcTo(0, 0, w, 0, r); x.fill();
+  x.fillStyle = fg; x.textBaseline = "middle"; x.fillText(text, 20, c.height / 2 + 2);
+  const tex = new THREE.CanvasTexture(c); tex.minFilter = THREE.LinearFilter;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: !screen ? false : true, transparent: true, sizeAttenuation: !screen }));
+  if (screen) sp.scale.set(w / c.height * 0.085, 0.085, 1);      // fixed size on screen
+  else sp.scale.set(w / c.height * 2.6 * size, 2.6 * size, 1);
+  sp.renderOrder = 10;
+  return sp;
+}
+const COL3 = { room: 0xd9d4ff, store: 0xe3dfee, toilet: 0xcfe7fa, stairs: 0xc9c5e6, lift: 0xb9b2f0, outdoor: 0xcdebd6, void: 0xeeeeee };
+
+function stop3D() {
+  cancelAnimationFrame(V3.raf);
+  if (V3.renderer) { V3.renderer.dispose(); V3.renderer.domElement.remove(); V3.renderer = null; }
+  if (V3.controls) { V3.controls.dispose(); V3.controls = null; }
+}
+function show3D(loc, person) {
+  try { build3D(loc, person); }
+  catch (e) { fallback2D(e); }
+}
+function build3D(loc, person) {
+  stop3D();
+  const POV = viewMode === "walk";
+  FH = POV ? 12 : 26;                       // real-ish storey height for walking, stretched for the overview
+  const box = $("view3d");
+  const route = planRoute(loc);
+  if (!route) { box.textContent = "Can't plan a route: the kiosk spot or this place has no map position."; return; }
+  const W = box.clientWidth, H = box.clientHeight;
+  const scene = new THREE.Scene();
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+  renderer.setSize(W, H);
+  box.innerHTML = ""; box.appendChild(renderer.domElement);
+  const hud = document.createElement("div"); hud.className = "v3-hud"; box.appendChild(hud);
+  V3.renderer = renderer;
+  renderer.domElement.addEventListener("webglcontextlost", e => { e.preventDefault(); fallback2D("WebGL context lost"); });
+  scene.add(new THREE.AmbientLight(0xffffff, POV ? 0.9 : 0.8));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(-40, 120, 60); scene.add(sun);
+  if (POV) scene.fog = new THREE.Fog(0x2a2463, 60, 220);
+
+  const top = Math.max(...route.floors), used = new Set(route.floors);
+  { // label size from the size of the floors shown
+    const xs = [], zs = [];
+    route.floors.forEach(n => (BUILDING.floors[n]?.footprint || []).forEach(p => { const v = to3(n, p); xs.push(v.x); zs.push(v.z); }));
+    LS = Math.max(1, Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...zs) - Math.min(...zs)) / 36);
+  }
+  const roomLabels = [];
+  // rooms the walk goes through: draw them almost see-through so the walk view isn't blocked
+  const crossed = (n, r) => route.parts.some(part => !part.vertical && part.floor === n && part.pts.some((p, i) => {
+    if (!i) return inRect(p, r);
+    const q = part.pts[i - 1], steps = Math.ceil(Math.hypot(p[0] - q[0], p[1] - q[1]) / 6);
+    for (let k = 0; k <= steps; k++) if (inRect([q[0] + (p[0] - q[0]) * k / steps, q[1] + (p[1] - q[1]) * k / steps], r)) return true;
+    return false;
+  }));
+  const SKIP_LABEL = new Set(["Lobby", "Corridor", "Void", "Stairs", "Fire escape", "Elec.", "Open area", "Staircase", "Lift"]);
+  const bbox = new THREE.Box3();
+  for (let n = 1; n <= top; n++) {
+    const f = BUILDING.floors[n]; if (!f) continue;
+    const active = used.has(n);
+    if (POV && !active) continue;
+    const g = new THREE.Group();
+    // slab
+    const shape = new THREE.Shape(f.footprint.map(p => { const v = to3(n, p); return new THREE.Vector2(v.x, v.z); }));
+    const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.6, bevelEnabled: false }),
+      new THREE.MeshLambertMaterial({ color: active ? 0xf4f2ff : 0xbdb8e0, transparent: true, opacity: active ? 0.97 : 0.18, side: THREE.DoubleSide }));
+    slab.rotation.x = Math.PI / 2; slab.position.y = (n - 1) * FH; g.add(slab);
+    // outer walls
+    const WALL = POV ? 9 : 2.6;
+    if (POV) {
+      const fp = f.footprint;
+      for (let i = 0; i < fp.length; i++) {
+        const a = to3(n, fp[i]), b = to3(n, fp[(i + 1) % fp.length]);
+        const len = Math.hypot(b.x - a.x, b.z - a.z);
+        const wall = new THREE.Mesh(new THREE.BoxGeometry(len, WALL, 0.3),
+          new THREE.MeshLambertMaterial({ color: 0xcfcaf3, transparent: true, opacity: 0.35, side: THREE.DoubleSide }));
+        wall.position.set((a.x + b.x) / 2, (n - 1) * FH + WALL / 2, (a.z + b.z) / 2);
+        wall.rotation.y = -Math.atan2(b.z - a.z, b.x - a.x);
+        g.add(wall);
+      }
+    }
+    const wallPts = f.footprint.map(p => to3(n, p, WALL)); wallPts.push(wallPts[0]);
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(wallPts), new THREE.LineBasicMaterial({ color: 0x3f3a85, transparent: true, opacity: active ? 0.9 : 0.25 })));
+    const basePts = f.footprint.map(p => to3(n, p, 0.05)); basePts.push(basePts[0]);
+    g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(basePts), new THREE.LineBasicMaterial({ color: 0x3f3a85, transparent: true, opacity: active ? 0.9 : 0.25 })));
+    // rooms
+    for (const r of f.rooms.concat(f.outside)) {
+      if (r.type === "wall" || r.hidden) continue;          // routing-only shapes
+      const a = to3(n, [r.r[0], r.r[1]]), b = to3(n, [r.r[2], r.r[3]]);
+      if (r.type !== "open" && !(POV && r.type === "void")) {
+        const hgt = r.type === "outdoor" ? 0.3 : r.type === "stairs" ? (POV ? 2 : 1) : (POV ? 7.5 : 1.8);
+        const geo = new THREE.BoxGeometry(Math.abs(b.x - a.x) - 0.15, hgt, Math.abs(b.z - a.z) - 0.15);
+        const thru = POV && active && crossed(n, r.r);
+        const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: COL3[r.type] || 0xdddddd, transparent: true, opacity: active ? (POV ? (thru ? 0.06 : 0.3) : 0.4) : 0.08, side: THREE.DoubleSide, depthWrite: !thru }));
+        m.position.set((a.x + b.x) / 2, (n - 1) * FH + hgt / 2 + 0.02, (a.z + b.z) / 2);
+        g.add(m);
+        if (active) {
+          const e = new THREE.LineSegments(new THREE.EdgesGeometry(geo), new THREE.LineBasicMaterial({ color: 0x6d67b3, transparent: true, opacity: 0.6 }));
+          e.position.copy(m.position); g.add(e);
+        }
+      }
+      // room names help when walking through
+      if (POV && active && !SKIP_LABEL.has(r.name) && r.name !== loc.name) {
+        const l = label3(r.name, "rgba(27,22,66,0.8)", "#ffffff", 1, true);
+        l.position.set((a.x + b.x) / 2, (n - 1) * FH + 5, (a.z + b.z) / 2);
+        l.userData.floor = n;
+        roomLabels.push(l);
+        g.add(l);
+      }
+    }
+    if (active && !POV) {
+      const lab = label3(f.label, "#3f3a85", "#ffffff", 0.9);
+      const p0 = f.footprint.reduce((m, p) => (p[0] + p[1] < m[0] + m[1] ? p : m));
+      lab.position.copy(to3(n, p0, 4.5)); g.add(lab);
+    }
+    if (active) bbox.expandByObject(slab);
+    scene.add(g);
+  }
+
+  // route line
+  const pts3 = [];
+  for (const part of route.parts) {
+    if (part.vertical) {
+      pts3.push(to3(part.from, part.a, POV ? 0.2 : 0.9));
+      const RY = POV ? 0.2 : 0.9;
+      if (part.mode === "lift") pts3.push(to3(part.to, part.a, RY).setX(to3(part.to, part.b).x).setZ(to3(part.to, part.b).z));
+      pts3.push(to3(part.to, part.b, RY));
+    } else for (const p of part.pts) pts3.push(to3(part.floor, p, POV ? 0.2 : 0.9));
+  }
+  const clean = pts3.filter((p, i) => i === 0 || p.distanceTo(pts3[i - 1]) > 0.05);
+  const path = new THREE.CurvePath();
+  for (let i = 1; i < clean.length; i++) path.add(new THREE.LineCurve3(clean[i - 1], clean[i]));
+  const tubeMat = new THREE.MeshBasicMaterial({ color: 0xf97362, depthTest: !POV ? false : true, transparent: true, opacity: POV ? 0.9 : 0.95 });
+  if (!POV) {
+    const tube = new THREE.Mesh(new THREE.TubeGeometry(path, Math.max(40, clean.length * 12), 0.38, 8, false), tubeMat);
+    tube.renderOrder = 5; scene.add(tube);
+  } else {
+    // walking view: draw the line on each floor only (not up the stairs, where it would fill the screen)
+    for (const part of route.parts) {
+      if (part.vertical || part.pts.length < 2) continue;
+      const cp = new THREE.CurvePath();
+      const fp = part.pts.map(p => to3(part.floor, p, 0.2));
+      for (let i = 1; i < fp.length; i++) if (fp[i].distanceTo(fp[i - 1]) > 0.05) cp.add(new THREE.LineCurve3(fp[i - 1], fp[i]));
+      if (!cp.curves.length) continue;
+      const t = new THREE.Mesh(new THREE.TubeGeometry(cp, Math.max(20, fp.length * 12), 0.16, 6, false), tubeMat);
+      t.renderOrder = 5; scene.add(t);
+    }
+  }
+  const walkers = POV ? [] : [0, 1, 2].map(() => {
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.8, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false }));
+    s.renderOrder = 6; scene.add(s); return s;
+  });
+  // pins
+  const youP = clean[0], goalP = clean[clean.length - 1];
+  const PS = POV ? 0.9 : LS;
+  const pin = (p, color, text, bg) => {
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2.6, 16), new THREE.MeshBasicMaterial({ color }));
+    cone.scale.setScalar(PS); cone.rotation.x = Math.PI; cone.position.copy(p).add(new THREE.Vector3(0, 2.2 * PS, 0));
+    cone.material.depthTest = false; cone.renderOrder = 7; scene.add(cone);
+    const l = label3(text, bg, "#ffffff", POV ? 0.5 : 1.1); l.position.copy(p).add(new THREE.Vector3(0, (POV ? 5.5 : 6 * LS), 0)); scene.add(l);
+    return cone;
+  };
+  if (!POV) pin(youP, 0x0ea5e9, "You are here", "#0ea5e9");
+  const goalCone = pin(goalP, 0xf97362, person ? person.name : loc.name, "#f97362");
+
+  let camera, span = 100;
+  if (POV) {
+    camera = new THREE.PerspectiveCamera(68, W / H, 0.1, 1000);
+  } else {
+    clean.forEach(p => bbox.expandByPoint(p));
+    bbox.expandByPoint(goalP.clone().add(new THREE.Vector3(0, 7 * LS, 0)));
+    bbox.expandByPoint(youP.clone().add(new THREE.Vector3(0, 7 * LS, 0)));
+    const sphere = bbox.getBoundingSphere(new THREE.Sphere());
+    const center = sphere.center;
+    camera = new THREE.PerspectiveCamera(38, W / H, 1, 4000);
+    const vf = 38 * Math.PI / 180, hf = 2 * Math.atan(Math.tan(vf / 2) * W / H);
+    const dist = sphere.radius / Math.sin(Math.min(vf, hf) / 2) * 0.74;
+    camera.position.copy(center).addScaledVector(new THREE.Vector3(-0.5, 0.42, 0.85).normalize(), dist);
+    camera.lookAt(center);
+    span = sphere.radius * 2;
+    if (THREE.OrbitControls) {
+      const c = new THREE.OrbitControls(camera, renderer.domElement);
+      c.target.copy(center); c.enableDamping = true; c.enablePan = false;
+      c.autoRotate = true; c.autoRotateSpeed = 0.7; c.maxPolarAngle = Math.PI * 0.47;
+      c.minDistance = span * 0.4; c.maxDistance = span * 3;
+      c.addEventListener("start", () => { c.autoRotate = false; activity(); });
+      V3.controls = c;
+    }
+    hud.textContent = "Drag to turn the model";
+  }
+  V3.camera = camera;
+
+  // walk-through: eye height ~1.6 m, walking pace, pause at the end, then repeat
+  const EYE = 4.3, SPEED = 7, HOLD = 2.5;
+  const len = path.getLength(), walkTime = len / SPEED;
+  const look = new THREE.Vector3(), lookTarget = new THREE.Vector3(), flatDir = new THREE.Vector3(1, 0, 0);
+  let lastHud = "";
+  const t0 = performance.now();
+  const floorAt = y => Math.round(y / FH) + 1;
+  const loop = now => {
+    const secs = (now - t0) / 1000;
+    if (POV) {
+      const cycle = secs % (walkTime + HOLD + 1);
+      const u = Math.min(0.9995, Math.max(0, (cycle - 1) / walkTime));        // 1 s pause at the start
+      const p = path.getPointAt(u), ahead = path.getPointAt(Math.min(0.9995, u + 6 / len));
+      if (p && ahead) {
+        camera.position.set(p.x, p.y + EYE, p.z);
+        const d = ahead.clone().sub(p);
+        const horiz = Math.hypot(d.x, d.z);
+        if (horiz > 0.3) flatDir.set(d.x, 0, d.z).normalize();               // keep facing forward in the lift
+        lookTarget.copy(camera.position).addScaledVector(flatDir, 10);
+        if (horiz > 0.3) lookTarget.y = ahead.y + EYE - 0.8;                   // look up/down the stairs
+        else lookTarget.y = camera.position.y - 1;
+        look.lerp(lookTarget, look.lengthSq() ? 0.08 : 1);
+        camera.lookAt(look);
+        const fl = floorAt(p.y), name = floorOf(fl).name;
+        for (const l of roomLabels) l.visible = l.userData.floor === fl && l.position.distanceTo(camera.position) < 45;
+        const msg = cycle > 1 + walkTime ? `Arrived: ${person ? person.name : loc.name}` : `${name} · walking to ${person ? person.name : loc.name}`;
+        if (msg !== lastHud) { hud.textContent = msg; lastHud = msg; }
+      }
+    } else {
+      const t = (secs * 12 / len) % 1;
+      walkers.forEach((w, i) => { const pt = path.getPointAt(Math.min(0.9995, (t + i / 3) % 1)); if (pt) w.position.copy(pt); });
+      if (V3.controls) V3.controls.update();
+    }
+    goalCone.position.y = goalP.y + 2.2 * PS + Math.sin(now / 250) * 0.4 * PS;
+    renderer.render(scene, camera);
+    V3.raf = requestAnimationFrame(loop);
+  };
+  V3.raf = requestAnimationFrame(loop);
+}
+function size3D() {
+  if (!V3.renderer || !V3.camera) return;
+  const box = $("view3d"), W = box.clientWidth, H = box.clientHeight;
+  V3.renderer.setSize(W, H);
+  V3.camera.aspect = W / H;
+  V3.camera.updateProjectionMatrix();
+}
+
+
+/* =========================================================
+   PARCEL DELIVERY: camera -> read the label -> confirm the person -> Telegram
+   ========================================================= */
+let camStream = null, parcelPhoto = null, ocrWorker = null, ocrLoading = null;
+
+function tgConfig() {
+  const t = INFO.telegram || {};
+  return { token: t["bot token"] || "", hr: t["hr chat id"] || "" };
+}
+function stopCamera() {
+  if (camStream) { camStream.getTracks().forEach(t => t.stop()); camStream = null; }
+  seeResume();                                   // hand the camera back to the greeting
+}
+function parcelUI(state) {
+  // state: camera | reading | choose | sending | done
+  ["pcCamera", "pcPhoto", "pcChoose", "pcDone"].forEach(id => $(id).hidden = true);
+  $("pcBtns").innerHTML = "";
+  if (state === "camera") $("pcCamera").hidden = false;
+  if (state === "reading" || state === "choose" || state === "sending") $("pcPhoto").hidden = !parcelPhoto;
+  if (state === "choose") $("pcChoose").hidden = false;
+  if (state === "done") $("pcDone").hidden = false;
+}
+function pcButton(label, fn, primary) {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "chip" + (primary ? " primary" : "");
+  b.textContent = label;
+  b.addEventListener("click", () => { activity(); fn(); });
+  $("pcBtns").appendChild(b);
+}
+
+async function openParcel(hint) {
+  closePanel();
+  document.body.classList.add("has-panel", "compact");
+  ["mapWrap", "floorTabs", "floorNote", "viewToggle", "view3d", "placeBox", "peopleList", "personCard", "setupBox", "lightsBox"].forEach(id => $(id).hidden = true);
+  $("parcelBox").hidden = false;
+  $("pTitle").textContent = "Parcel delivery";
+  parcelPhoto = null;
+  $("pcStatus").textContent = "";
+  const named = hint ? findPeople(hint) : [];
+  try {
+    seePause();                                  // the greeting lets go of the camera
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "environment" }, audio: false });
+    $("pcVideo").srcObject = camStream;
+    $("pcText").textContent = "Hold the parcel label up to the camera, then tap Take photo.";
+    parcelUI("camera");
+    pcButton("Take photo", takeParcelPhoto, true);
+    pcButton("Type or pick the name instead", () => chooseReceiver(named));
+    say(named.length === 1
+      ? `Thank you! Is this parcel for ${named[0].name}? Please show me the label so I can take a photo for them.`
+      : "Thank you! Please show me the parcel label so I can read who it's for.",
+      "Please show me the parcel label.");
+    loadOCR();                                   // start loading the reader in the background
+  } catch (e) {
+    console.warn("No camera:", e);
+    chooseReceiver(named, "No camera found, so please pick who the parcel is for.");
+  }
+}
+
+function takeParcelPhoto() {
+  const v = $("pcVideo");
+  if (!v.videoWidth) return;
+  const c = document.createElement("canvas");
+  c.width = v.videoWidth; c.height = v.videoHeight;
+  c.getContext("2d").drawImage(v, 0, 0);
+  parcelPhoto = c;
+  $("pcImg").src = c.toDataURL("image/jpeg", 0.85);
+  stopCamera();
+  parcelUI("reading");
+  $("pcText").textContent = "Reading the label…";
+  readLabel(c);
+}
+
+/* Offline text reader (Tesseract), loaded only when needed */
+function loadOCR() {
+  if (ocrWorker) return Promise.resolve(ocrWorker);
+  if (ocrLoading) return ocrLoading;
+  ocrLoading = new Promise((resolve, reject) => {
+    const go = async () => {
+      try {
+        ocrWorker = await Tesseract.createWorker("eng", 1, {
+          workerPath: "ocr/worker.min.js", corePath: "ocr", langPath: "ocr", gzip: true,
+          logger: m => { if (m.status === "recognizing text" && !$("pcPhoto").hidden) $("pcStatus").textContent = `Reading… ${Math.round(m.progress * 100)}%`; }
+        });
+        resolve(ocrWorker);
+      } catch (e) { ocrLoading = null; reject(e); }
+    };
+    if (window.Tesseract) return go();
+    const s = document.createElement("script");
+    s.src = "ocr/tesseract.min.js";
+    s.onload = go;
+    s.onerror = () => { ocrLoading = null; reject(new Error("ocr/tesseract.min.js not found")); };
+    document.head.appendChild(s);
+  });
+  return ocrLoading;
+}
+async function readLabel(canvas) {
+  let text = "";
+  try {
+    const w = await loadOCR();
+    // grey + contrast helps with photos of labels
+    const g = document.createElement("canvas"); g.width = canvas.width; g.height = canvas.height;
+    const x = g.getContext("2d"); x.filter = "grayscale(1) contrast(1.6)"; x.drawImage(canvas, 0, 0);
+    text = (await w.recognize(g)).data.text || "";
+  } catch (e) { console.warn("OCR failed:", e); }
+  $("pcStatus").textContent = "";
+  const hits = matchLabel(text);
+  chooseReceiver(hits, hits.length ? "Is the parcel for this person?" : "I couldn't read a staff name on the label. Please pick who it's for.");
+}
+
+/* Find staff names in messy label text (allows small reading mistakes) */
+function lev(a, b) {
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function matchLabel(text) {
+  const words = tokens(text.replace(/[0O](?=[a-z])/gi, "o"));
+  const near = w => words.some(t => t === w || (w.length >= 4 && lev(t, w) <= 1) || (w.length >= 7 && lev(t, w) <= 2));
+  const scored = INFO.people.map(p => {
+    const nt = tokens(p.name);
+    const hit = nt.filter(near).length;
+    const score = hit === nt.length ? hit + 1 : hit >= 2 ? hit : (hit === 1 && nt.length === 1 ? 1.5 : 0);
+    return { p, score };
+  }).filter(r => r.score > 0).sort((a, b) => b.score - a.score);
+  if (!scored.length) return [];
+  const best = scored[0].score;
+  return scored.filter(r => r.score >= best - 0.5).slice(0, 4).map(r => r.p);
+}
+
+function chooseReceiver(candidates, msg) {
+  stopCamera();
+  parcelUI("choose");
+  $("pcText").textContent = msg || (candidates.length ? "Is the parcel for this person?" : "Who is the parcel for? Tap their name, or type it below.");
+  const box = $("pcList");
+  box.innerHTML = "";
+  const list = candidates.length ? candidates : INFO.people;
+  renderPeopleInto(box, list, p => sendParcel(p));
+  if (candidates.length) pcButton("Someone else", () => chooseReceiver([], "Who is the parcel for? Tap their name, or type it below."));
+  pcButton("Retake photo", () => openParcel());
+  pcButton("Not for anyone here / cancel", () => { welcome(); });
+  if (candidates.length === 1) say(`Is this parcel for ${candidates[0].name}? Tap their name to let them know.`, `Is this parcel for ${candidates[0].name}?`);
+  else if (candidates.length > 1) say("I found a few possible names. Tap the right person.");
+  else say("Who is the parcel for? Tap their name, or type it below.");
+  parcelPicking = true;
+}
+let parcelPicking = false;
+
+async function sendParcel(p) {
+  parcelPicking = false;
+  parcelUI("sending");
+  $("pcText").textContent = "Letting HR know…";
+  const { token, hr } = tgConfig();
+  const when = new Date().toLocaleString("en-SG", { weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const spot = INFO.here.name || floorOf(INFO.here.floor).name;
+  const id = Date.now().toString(36);
+  const caption = `📦 Parcel for ${p.name}${p.role ? " (" + p.role + ")" : ""}?\nArrived at the ${CONFIG.botName} kiosk (${spot}), ${when}.\nThe courier was asked to leave it at the HR office.\n\nPlease check the name on the label, then tap a button.`;
+  let ok = false, problem = "";
+  if (!token || !hr) problem = "Telegram isn't set up yet (see [TELEGRAM] in office-info.txt).";
+  else {
+    try {
+      const keyboard = { inline_keyboard: [[{ text: `✅ Confirm, notify ${p.name}`, callback_data: `ok:${id}` }, { text: "✏️ Wrong person", callback_data: `no:${id}` }]] };
+      let res;
+      if (parcelPhoto) {
+        const blob = await new Promise(r => parcelPhoto.toBlob(r, "image/jpeg", 0.85));
+        const fd = new FormData();
+        fd.append("chat_id", hr); fd.append("caption", caption); fd.append("photo", blob, "parcel.jpg");
+        fd.append("reply_markup", JSON.stringify(keyboard));
+        res = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: "POST", body: fd });
+      } else {
+        res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ chat_id: hr, text: caption, reply_markup: keyboard }) });
+      }
+      const j = await res.json();
+      if (j.ok) { ok = true; tgStore.parcels[id] = { name: p.name, when, msg: j.result.message_id, photo: !!parcelPhoto }; tgSave(); }
+      else problem = "Telegram said: " + (j.description || res.status);
+    } catch (e) { problem = "Couldn't reach Telegram. Is the kiosk online?"; }
+  }
+  parcelUI("done");
+  const hrLoc = INFO.locations.find(l => l.name.toLowerCase() === "hr office");
+  if (ok) {
+    $("pcText").textContent = "Message sent";
+    $("pcDoneText").textContent = `Thank you! HR has been told and will let ${p.name} know. Please leave the parcel at the HR office.`;
+    say(`Thank you! I've told HR, and they'll let ${p.name} know. Please leave the parcel at the HR office.${hrLoc ? " " + fullDirections(hrLoc) : ""}`, "Thank you! HR has been told. Please leave the parcel at the HR office.");
+  } else {
+    $("pcText").textContent = "Message not sent";
+    $("pcDoneText").textContent = `I couldn't send the message. ${problem} Please leave the parcel at the HR office and let a staff member know.`;
+    say(`Sorry, I couldn't send the message. Please leave the parcel at the HR office and let a staff member know.${hrLoc ? " " + fullDirections(hrLoc) : ""}`, "Sorry, I couldn't send the message. Please leave the parcel at the HR office.");
+    setStatus(problem);
+  }
+  if (hrLoc) pcButton("Show me the way to HR", () => goToPlace(hrLoc), true);
+  pcButton("Done", () => welcome());
+}
+
+/* ---------------------------------------------------------
+   Telegram bot, run by the kiosk page itself (no server needed):
+   - HR taps Confirm -> the bot messages the person privately
+   - HR taps Wrong person -> HR replies with the right name
+   - Staff register by opening the bot, tapping Start and sending their name
+   Registrations are saved in the kiosk browser (and can be added to [PEOPLE] as a 5th column).
+   --------------------------------------------------------- */
+/* ---------------- Saved settings ----------------
+   The chosen voice, timers, scheduled lights and Telegram sign-ups are saved in kiosk-settings.json next to
+   this page (through kiosk-server.py), so they survive closing the kiosk, a restart, or switching browser.
+   The browser's own storage is kept as a backup. */
+const STORE = { data: {}, server: false, timer: 0 };
+const LS_KEYS = { voice: "cubot-voice", telegram: "cubot-telegram", jobs: "cubot-jobs" };
+async function storeLoad() {
+  for (const [k, ls] of Object.entries(LS_KEYS)) {           // backup copy first
+    try { const v = localStorage.getItem(ls); if (v) STORE.data[k] = JSON.parse(v); } catch (e) {}
+  }
+  try {
+    const r = await fetch("/api/settings", { cache: "no-store", signal: AbortSignal.timeout(3000) });
+    if (r.ok) {
+      const d = await r.json();
+      STORE.server = true;
+      const fresh = !Object.keys(d).length;
+      Object.assign(STORE.data, d);
+      if (fresh && Object.keys(STORE.data).length) storeFlush();   // first time: move the old browser settings into the file
+    }
+  } catch (e) { /* old web server: browser storage only */ }
+}
+function storeGet(k) { return STORE.data[k]; }
+function storeSet(k, v) {
+  if (v === undefined || v === null) delete STORE.data[k]; else STORE.data[k] = v;
+  try { if (v === undefined || v === null) localStorage.removeItem(LS_KEYS[k] || "cubot-" + k); else localStorage.setItem(LS_KEYS[k] || "cubot-" + k, JSON.stringify(v)); } catch (e) {}
+  clearTimeout(STORE.timer);
+  STORE.timer = setTimeout(storeFlush, 300);
+}
+function storeFlush() {
+  if (!STORE.server) return;
+  fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(STORE.data), keepalive: true }).catch(() => {});
+}
+
+let tgStore = { offset: 0, people: {}, parcels: {}, pending: {}, waitingName: {} };
+function tgSave() {
+  const ids = Object.keys(tgStore.parcels);                       // keep the last 200 parcels
+  if (ids.length > 200) ids.slice(0, ids.length - 200).forEach(k => delete tgStore.parcels[k]);
+  storeSet("telegram", tgStore);
+}
+function chatIdOf(person) {
+  return person.telegram || tgStore.people[person.name] || "";
+}
+async function tg(method, body) {
+  const { token } = tgConfig();
+  const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  return res.json();
+}
+async function tgEditStatus(rec, chatId, status) {
+  const text = `📦 Parcel for ${rec.name}, ${rec.when}.\n${status}`;
+  const body = { chat_id: chatId, message_id: rec.msg, reply_markup: { inline_keyboard: [] } };
+  try { await tg(rec.photo ? "editMessageCaption" : "editMessageText", rec.photo ? { ...body, caption: text } : { ...body, text }); } catch (e) {}
+}
+async function tgNotify(person, rec) {
+  const chat = chatIdOf(person);
+  if (!chat) return false;
+  const j = await tg("sendMessage", { chat_id: chat, text: `📦 Hi ${person.name}, a parcel has arrived for you (${rec.when}). Please collect it from the HR office.` });
+  return !!j.ok;
+}
+const whoTapped = u => [u.first_name, u.last_name].filter(Boolean).join(" ") || u.username || "HR";
+
+async function tgHandle(u) {
+  const { hr } = tgConfig();
+  // HR pressed a button under a parcel alert
+  if (u.callback_query) {
+    const cq = u.callback_query, [act, id] = (cq.data || "").split(":"), rec = tgStore.parcels[id];
+    const chatId = cq.message && cq.message.chat.id;
+    if (!rec) { await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "This parcel is no longer in the list." }); return; }
+    if (act === "ok") {
+      const person = INFO.people.find(p => p.name === rec.name);
+      const sent = person ? await tgNotify(person, rec) : false;
+      await tg("answerCallbackQuery", { callback_query_id: cq.id, text: sent ? `${rec.name} has been notified.` : `${rec.name} hasn't joined the bot yet.` });
+      await tgEditStatus(rec, chatId, sent
+        ? `✅ Confirmed by ${whoTapped(cq.from)}. ${rec.name} has been notified.`
+        : `✅ Confirmed by ${whoTapped(cq.from)}. ${rec.name} hasn't joined the bot, so please let them know.`);
+      rec.done = true; tgSave();
+    } else if (act === "no") {
+      await tg("answerCallbackQuery", { callback_query_id: cq.id, text: "Reply to the alert with the right name." });
+      await tgEditStatus(rec, chatId, `✏️ ${whoTapped(cq.from)} says this is the wrong person. Reply to this message with the right name.`);
+      tgStore.pending[`${chatId}:${rec.msg}`] = id; tgSave();
+    }
+    return;
+  }
+  const m = u.message;
+  if (!m || !m.text) return;
+  const text = m.text.trim(), chat = m.chat;
+  // HR replied to an alert with the right name
+  if (m.reply_to_message && String(chat.id) === String(hr)) {
+    const key = `${chat.id}:${m.reply_to_message.message_id}`, id = tgStore.pending[key], rec = tgStore.parcels[id];
+    if (!rec) return;
+    const hits = findPeople(text);
+    if (hits.length !== 1) { await tg("sendMessage", { chat_id: chat.id, reply_to_message_id: m.message_id, text: hits.length ? `I found ${hits.length} people: ${hits.map(h => h.name).join(", ")}. Please reply with the full name.` : "I couldn't find that name in the staff list. Please reply with their full name." }); return; }
+    rec.name = hits[0].name;
+    const sent = await tgNotify(hits[0], rec);
+    await tgEditStatus(rec, chat.id, sent ? `✅ Corrected by ${whoTapped(m.from)}. ${rec.name} has been notified.` : `✅ Corrected by ${whoTapped(m.from)} to ${rec.name}, who hasn't joined the bot, so please let them know.`);
+    delete tgStore.pending[key]; rec.done = true; tgSave();
+    return;
+  }
+  // Staff registering in a private chat with the bot
+  if (chat.type !== "private") return;
+  const cid = String(chat.id);
+  if (/^\/stop\b/i.test(text)) {
+    for (const [n, c] of Object.entries(tgStore.people)) if (c === cid) delete tgStore.people[n];
+    tgSave();
+    await tg("sendMessage", { chat_id: cid, text: "OK, I won't send you parcel alerts any more. Send /start to sign up again." });
+    return;
+  }
+  if (/^\/start\b/i.test(text)) {
+    tgStore.waitingName[cid] = true; tgSave();
+    await tg("sendMessage", { chat_id: cid, text: `Hi! I'm ${CONFIG.botName}, the ${CONFIG.companyName} kiosk. I'll message you when a parcel arrives for you.\n\nPlease reply with your full name, as it appears in the company directory.` });
+    return;
+  }
+  const hits = findPeople(text);
+  if (hits.length === 1) {
+    for (const [n, c] of Object.entries(tgStore.people)) if (c === cid) delete tgStore.people[n];
+    tgStore.people[hits[0].name] = cid; delete tgStore.waitingName[cid]; tgSave();
+    await tg("sendMessage", { chat_id: cid, text: `Thanks, ${hits[0].name}! You're signed up. I'll message you here when HR confirms a parcel for you. (Send /stop to turn this off.)` });
+  } else {
+    await tg("sendMessage", { chat_id: cid, text: hits.length ? `I found ${hits.length} people with that name: ${hits.map(h => h.name).join(", ")}. Please send your full name.` : "Sorry, I couldn't find that name in the staff list. Please send your full name, as it appears in the company directory." });
+  }
+}
+
+let tgPolling = false;
+async function tgPoll() {
+  const { token } = tgConfig();
+  if (!token || tgPolling || SETUP || VOICES || Q.has("telegram")) return;
+  tgPolling = true;
+  let wait = 2000;
+  while (true) {
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?timeout=25&offset=${tgStore.offset}&allowed_updates=${encodeURIComponent('["message","callback_query"]')}`);
+      const j = await res.json();
+      if (j.ok) {
+        wait = 2000;
+        for (const u of j.result) {
+          tgStore.offset = u.update_id + 1; tgSave();
+          try { await tgHandle(u); } catch (e) { console.warn("Telegram update failed:", e); }
+        }
+        continue;
+      }
+      console.warn("Telegram:", j.description);
+    } catch (e) { /* offline: try again later */ }
+    await new Promise(r => setTimeout(r, wait));
+    wait = Math.min(wait * 2, 60000);
+  }
+}
+
+/* Telegram setup helper: welcome-kiosk.html?telegram */
+async function telegramSetup() {
+  document.body.classList.add("setup", "has-panel");
+  ["mapWrap", "floorTabs", "viewToggle", "view3d", "placeBox", "personCard", "pClose"].forEach(id => $(id).hidden = true);
+  $("pTitle").textContent = "Telegram setup";
+  const { token, hr } = tgConfig();
+  const box = $("peopleList");
+  box.hidden = false;
+  box.style.gridTemplateColumns = "1fr";
+  if (!token) { $("pText").textContent = "Add your bot token under [TELEGRAM] in office-info.txt first, then refresh this page."; return; }
+  $("pText").textContent = "Add the bot to the HR group and send any message there, then tap Refresh chats and copy the group's chat ID into office-info.txt. Close the kiosk page while using this page, so the two don't compete for messages.";
+  const refresh = async () => {
+    box.innerHTML = "Loading…";
+    try {
+      const j = await (await fetch(`https://api.telegram.org/bot${token}/getUpdates`)).json();
+      if (!j.ok) { box.textContent = "Telegram said: " + j.description; return; }
+      const chats = new Map();
+      for (const u of j.result) {
+        const m = u.message || u.my_chat_member || u.channel_post || u.edited_message;
+        if (m && m.chat) chats.set(m.chat.id, m.chat);
+      }
+      box.innerHTML = "";
+      if (!chats.size) { box.textContent = "No chats yet. Send a message to the bot or in the group, then tap Refresh."; }
+      for (const c of chats.values()) {
+        const row = document.createElement("button");
+        row.type = "button";
+        row.innerHTML = '<div class="avatar"></div><div><div class="name"></div><div class="role"></div></div>';
+        row.querySelector(".avatar").textContent = c.type === "private" ? "👤" : "👥";
+        row.querySelector(".name").textContent = c.title || [c.first_name, c.last_name].filter(Boolean).join(" ") || c.username || "Chat";
+        row.querySelector(".role").textContent = `Chat ID: ${c.id}  ·  ${c.type === "private" ? "put on this person's line in [PEOPLE]" : "use as hr chat id"}`;
+        box.appendChild(row);
+      }
+    } catch (e) { box.textContent = "Couldn't reach Telegram. Is this PC online?"; }
+  };
+  const bar = document.createElement("div");
+  bar.className = "chips";
+  bar.style.justifyContent = "flex-start";
+  const mk = (label, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = label; b.onclick = fn; bar.appendChild(b); };
+  mk("Refresh chats", refresh);
+  mk("Show signed-up staff", () => {
+    const list = Object.entries(tgStore.people);
+    box.innerHTML = "";
+    if (!list.length) { box.textContent = "Nobody has signed up yet. Staff open the bot, tap Start and send their full name."; return; }
+    for (const [name, id] of list.sort()) {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.innerHTML = '<div class="avatar">👤</div><div><div class="name"></div><div class="role"></div></div>';
+      row.querySelector(".name").textContent = name;
+      row.querySelector(".role").textContent = `Chat ID: ${id}`;
+      box.appendChild(row);
+    }
+  });
+  mk("Send a test message to HR", async () => {
+    if (!hr) { setStatus("Add the hr chat id to [TELEGRAM] first."); return; }
+    const r = await (await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: hr, text: `👋 Test from the ${CONFIG.botName} kiosk. Parcel alerts will appear here.` }) })).json();
+    setStatus(r.ok ? "Test message sent to HR." : "Telegram said: " + r.description);
+  });
+  $("panel").insertBefore(bar, box);
+  refresh();
+}
+
+
+/* =========================================================
+   OFFICE LIGHTS (the ESP32 smart switch, through Supabase)
+   Works only from the office network: the database checks where the request comes from.
+   ========================================================= */
+let lightsUnlocked = false;
+function lightsCfg() {
+  const c = CONFIG.lights || {}, o = INFO.lights || {};
+  const lights = [1, 2].map(ch => {
+    const over = o["light " + ch];
+    return {
+      ch,
+      name: (over && over.name) || (c.names || [])[ch - 1] || "Light " + ch,
+      words: (over && over.words.length ? over.words : (c.words || [])[ch - 1]) || []
+    };
+  });
+  return { url: (c.url || "").replace(/\/$/, ""), key: c.key || "", room: o.room || c.room || "Office", pin: String(o["staff pin"] || c.pin || "").trim(),
+    kioskKey: String(o["kiosk key"] || "").trim(), lights };
+}
+const lightsReady = () => { const c = lightsCfg(); return !!(c.url && c.key); };
+async function lightsRead() {
+  const c = lightsCfg();
+  const res = await fetch(`${c.url}/rest/v1/smartlight?id=eq.1&select=state,state2,invert1,invert2`, { headers: { apikey: c.key }, cache: "no-store" });
+  if (!res.ok) throw new Error("read " + res.status);
+  const r = (await res.json())[0] || {};
+  // a switch mounted upside down is marked "inverted", so its stored state is the opposite of the light
+  const inv = { 1: !!r.invert1, 2: !!r.invert2 };
+  return { inv, on: { 1: (r.state === "ON") !== inv[1], 2: (r.state2 === "ON") !== inv[2] } };
+}
+/* This PC has its own key ([LIGHTS] "kiosk key" in office-info.txt), so it can always switch the lights, whatever
+   internet line the office is using. Without a key, the lights only accept the office's known internet addresses. */
+async function lightsSet(ch, on, inv) {
+  const c = lightsCfg();
+  const call = async (fn, extra) => {
+    const res = await fetch(`${c.url}/rest/v1/rpc/${fn}`, {
+      method: "POST", headers: { apikey: c.key, "Content-Type": "application/json" },
+      body: JSON.stringify({ ...extra, ch, new_state: on !== inv ? "ON" : "OFF" })
+    });
+    if (!res.ok) { let m = ""; try { m = (await res.json()).message || ""; } catch (e) {} throw new Error(m || "error " + res.status); }
+  };
+  if (c.kioskKey) {
+    try { return await call("light_set_kiosk", { p_key: c.kioskKey }); }
+    catch (e) { if (e instanceof TypeError) throw e; setStatus("Lights: the kiosk key was not accepted (" + e.message + "). Trying the office network instead.", "lights"); }
+  }
+  return call("light_set_net", {});
+}
+/* "turn off the wall lights" -> { chs: [2], on: false }.  action = null means just show the panel */
+function lightsIntent(text) {
+  if (!lightsReady() || !/\b(lights?|lamps?|spot ?lights?|lighting)\b/i.test(text)) return null;
+  const c = lightsCfg(), t = norm(text);
+  let chs = c.lights.filter(l => [l.name, ...l.words].some(w => { const n = norm(w).trim(); return n && t.includes(" " + n + " "); })).map(l => l.ch);
+  if (!chs.length || /\b(all|both|every|everything)\b/i.test(text)) chs = [1, 2];
+  const asking = /^\s*(is|are|was|were|what|which|why|how|do|does|did|where|who)\b/i.test(text);
+  const off = /\b(off|close|shut)\b/i.test(text), on = /\b(on|open)\b/i.test(text);
+  return { action: asking || on === off ? null : { chs, on } };
+}
+function showOnly(boxId, title) {
+  closePanel();
+  document.body.classList.add("has-panel", "compact");
+  for (const el of $("panel").children) if (!el.classList.contains("panel-head")) el.hidden = el.id !== boxId;
+  $("pTitle").textContent = title;
+  $("pText").textContent = "";
+}
+async function openLights(action) {
+  const c = lightsCfg();
+  showOnly("lightsBox", `${c.room} lights`);
+  if (c.pin && !lightsUnlocked) { lightsAskPin(action); return; }
+  $("ltPin").hidden = true;
+  $("ltRows").hidden = false;
+  $("ltText").textContent = "";
+  lightsRender(null);
+  let st = null;
+  try { st = await lightsRead(); } catch (e) { console.warn("Lights:", e); }
+  if (action && st) st = await lightsDo(action, st);
+  else if (action || !st) lightsFail(new TypeError("offline"));
+  else say(`Here are the ${c.room} lights.`);
+  lightsRender(st);
+}
+function lightsFail(e) {
+  const net = /trusted network/i.test(e.message), offline = e instanceof TypeError;
+  const why = net ? "I can only switch the lights from the office network."
+    : offline ? "I can't reach the light switch right now. Is the kiosk online?"
+    : "The light switch didn't accept that.";
+  $("ltText").textContent = why;
+  say(`Sorry, ${why}`);
+  if (!net && !offline) setStatus("Lights: " + e.message, "lights");
+}
+async function lightsDo({ chs, on, at, when }, st) {
+  const c = lightsCfg();
+  const what = chs.length === 2 ? `all the ${c.room} lights` : `the ${c.lights[chs[0] - 1].name.toLowerCase()}`;
+  if (at) {                                  // "in 5 seconds" / "at 6pm": do it later (shown at the top of the screen)
+    const short = chs.length === 2 ? "All lights" : c.lights[chs[0] - 1].name;
+    addJob({ kind: "lights", at, total: Math.round((at - Date.now()) / 1000), label: `${short} ${on ? "on" : "off"}`, action: { chs, on } });
+    $("ltText").textContent = `Scheduled: ${what} ${on ? "on" : "off"} ${when}. Tap × at the top to cancel.`;
+    say(`OK, I'll turn ${on ? "on" : "off"} ${what} ${when}.`);
+    return st;
+  }
+  try {
+    for (const ch of chs) { await lightsSet(ch, on, st.inv[ch]); st.on[ch] = on; }
+    $("ltText").textContent = "The switch takes a few seconds to move.";
+    say(`OK, turning ${on ? "on" : "off"} ${what}.`);
+  } catch (e) { lightsFail(e); }
+  return st;
+}
+function lightsRender(st) {
+  const c = lightsCfg(), rows = $("ltRows"), btns = $("ltBtns");
+  rows.innerHTML = ""; btns.innerHTML = "";
+  const act = (chs, on) => async () => { activity(); lightsRender(await lightsDo({ chs, on }, st)); };
+  for (const l of c.lights) {
+    const on = st ? st.on[l.ch] : null;
+    const row = document.createElement("div");
+    row.className = "lt-row" + (on ? " on" : "");
+    row.innerHTML = `<div class="lt-bulb">${ICON.bulb}</div><div class="lt-name"></div><div class="lt-state"></div>`;
+    row.querySelector(".lt-name").textContent = l.name;
+    row.querySelector(".lt-state").textContent = on === null ? "…" : on ? "On" : "Off";
+    if (st) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip primary";
+      b.textContent = on ? "Turn off" : "Turn on";
+      b.addEventListener("click", act([l.ch], !on));
+      row.appendChild(b);
+    }
+    rows.appendChild(row);
+  }
+  if (!st) return;
+  const mk = (label, fn) => { const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.textContent = label; b.addEventListener("click", fn); btns.appendChild(b); };
+  mk("All on", act([1, 2], true));
+  mk("All off", act([1, 2], false));
+}
+function lightsAskPin(action) {
+  const c = lightsCfg();
+  let typed = "";
+  $("ltRows").hidden = true; $("ltBtns").innerHTML = ""; $("ltPin").hidden = false;
+  $("ltText").textContent = "Staff only. Please enter the PIN.";
+  say("The lights are for staff only. Please enter the PIN.", "Please enter the staff PIN.");
+  const dots = () => { $("ltDots").textContent = "●".repeat(typed.length) + "○".repeat(Math.max(0, c.pin.length - typed.length)); };
+  const keys = $("ltKeys");
+  keys.innerHTML = "";
+  for (const k of ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"]) {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = k; b.disabled = !k;
+    b.addEventListener("click", () => {
+      activity();
+      typed = k === "⌫" ? typed.slice(0, -1) : typed + k;
+      if (typed.length >= c.pin.length) {
+        if (typed === c.pin) { lightsUnlocked = true; openLights(action); return; }
+        typed = ""; $("ltText").textContent = "That PIN isn't right. Please try again.";
+      }
+      dots();
+    });
+    keys.appendChild(b);
+  }
+  dots();
+}
+
+/* =========================================================
+   "HEY CUBOT": always listening for the wake phrase
+   "local" keeps the sound on this PC (Chrome's on-device speech recognition).
+   ========================================================= */
+const WAKE_GREET = new Set(["hey", "hay", "hi", "hello", "ok", "okay", "yo", "a", "eh", "ay", "hei", "hej", "oi"]);
+/* Finds the name near the start of what was heard: "Hey Cubot, ...", "Cubot, ...", "hi cube bot ..." */
+function wakeSplit(text) {
+  const raw = text.trim().split(/\s+/), tk = raw.map(w => w.toLowerCase().replace(/[^a-z0-9]/g, ""));
+  const bot = tokens(CONFIG.botName).join("");
+  const alias = new Set([bot, ...(CONFIG.wakeAliases || [])].map(a => tokens(a).join("")));
+  const nameAt = i => {
+    const one = tk[i], two = one + (tk[i + 1] || "");
+    if (!one) return 0;
+    if (tk[i + 1] && (alias.has(two) || lev(two, bot) <= 1)) return 2;     // two words first: "cube bot", "q bot"
+    if (alias.has(one) || (one.length >= 4 && lev(one, bot) <= 1)) return 1;
+    return 0;
+  };
+  for (let i = 0; i < Math.min(tk.length, 5); i++) {
+    const n = nameAt(i);
+    if (n && (i === 0 || WAKE_GREET.has(tk[i - 1]))) return { rest: raw.slice(i + n).join(" ") };
+  }
+  return null;
+}
+function wakeBlip() {
+  try {
+    const a = wakeBlip.ctx || (wakeBlip.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    const o = a.createOscillator(), g = a.createGain();
+    o.frequency.value = 880; o.connect(g); g.connect(a.destination);
+    g.gain.setValueAtTime(0.12, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + 0.18);
+    o.start(); o.stop(a.currentTime + 0.2);
+  } catch (e) {}
+}
+function wakeArm(ms = 8000) {
+  WAKE.armedUntil = Date.now() + ms;
+  stopTalking();
+  setState("listening");
+  activity();
+}
+function wakeDisarm() {
+  WAKE.armedUntil = 0; WAKE.inUtterance = false;
+  if (state === "listening") setState("idle");
+}
+function wakeRun(text) {
+  WAKE.armedUntil = 0; WAKE.inUtterance = false;
+  setState("idle");
+  handleUserText(text);
+}
+function wakeOnResult(e) {
+  WAKE.retryMs = 400;
+  const last = e.results[e.results.length - 1];
+  if (last && last[0]) { WAKE.heard = (last[0].transcript || "").trim(); WAKE.heardAt = Date.now(); }
+  // never listen to my own voice, or while I'm still working on an answer
+  if (((speakingNow || state === "speaking") && !countTalk) || state === "thinking" || Date.now() < WAKE.muteUntil) return;
+  if (countTalk && /^[\s\d.,!]*$|^\s*((one|two|three|four|five|six|seven|eight|nine|ten|zero|time'?s up)[\s.,!]*)+$/i.test(WAKE.heard)) return;   // my own countdown
+  for (let i = e.resultIndex; i < e.results.length; i++) {
+    const r = e.results[i], text = (r[0].transcript || "").trim();
+    if (!text) continue;
+    const hit = wakeSplit(text), armed = Date.now() < WAKE.armedUntil;
+    if (hit) {
+      WAKE.matched = text;
+      if (!WAKE.inUtterance && !armed) wakeBlip();
+      WAKE.inUtterance = true;
+      wakeArm();
+      $("you").textContent = hit.rest ? "“" + hit.rest + "”" : "";
+      if (r.isFinal) {
+        WAKE.inUtterance = false;
+        if (hit.rest.replace(/[^a-z0-9]/gi, "").length > 2) wakeRun(hit.rest);     // "Hey Cubot, where is the pantry?"
+      }
+    } else if (armed || WAKE.inUtterance) {
+      WAKE.armedUntil = Date.now() + 8000;
+      $("you").textContent = "“" + text + "”";
+      if (r.isFinal) {
+        const garbled = WAKE.inUtterance;          // the wake phrase was heard, then re-heard as something else
+        WAKE.inUtterance = false;
+        if (!garbled) wakeRun(text);
+      }
+    }
+  }
+}
+function wakeStart() {
+  if (!WAKE.on || WAKE.hold || WAKE.running) return;
+  try { WAKE.rec.start(); } catch (e) {}
+}
+function wakePause() { if (!WAKE.on) return; WAKE.hold = true; try { WAKE.rec.abort(); } catch (e) {} }
+function wakeResume() { if (!WAKE.on || !WAKE.hold) return; WAKE.hold = false; WAKE.muteUntil = Date.now() + 500; setTimeout(wakeStart, 350); }
+function wakeOff(why) {
+  WAKE.on = false;
+  try { WAKE.rec && WAKE.rec.abort(); } catch (e) {}
+  setStatus(why, "wake");
+  if (state === "idle") setState("idle");
+}
+async function wakeInit(retry) {
+  const name = `"Hey ${CONFIG.botName}"`;
+  if (WAKE.on) return;
+  if (!CONFIG.wakeWord || CONFIG.wakeWord === "off") return;
+  if (!SR) { setStatus(`${name} is off: this browser has no speech recognition. Use Chrome.`, "wake"); return; }
+  const lang = CONFIG.speechLang;
+  let local = false;
+  // If the browser crashed while checking for on-device speech last time, don't try again (avoids a crash loop)
+  let crashedBefore = false;
+  try { crashedBefore = localStorage.getItem("cubot-wake-check") === "1"; } catch (e) {}
+  if (typeof SR.available === "function" && !crashedBefore && !WAKE.forceCloud) {
+    try {
+      try { localStorage.setItem("cubot-wake-check", "1"); } catch (e) {}
+      let st = await SR.available({ langs: [lang], processLocally: true });
+      if (st === "downloadable" || st === "downloading") {
+        setStatus("Getting the on-device speech pack (one time, needs internet)…", "wake");
+        st = (await SR.install({ langs: [lang], processLocally: true })) ? "available" : "unavailable";
+      }
+      local = st === "available";
+      try { localStorage.removeItem("cubot-wake-check"); } catch (e) {}
+    } catch (e) {
+      try { localStorage.removeItem("cubot-wake-check"); } catch (e2) {}
+      console.warn("On-device speech:", e);
+      if (!retry) { document.addEventListener("pointerdown", () => wakeInit(true), { once: true }); }   // some browsers only allow the download after a tap
+    }
+  }
+  if (!local && CONFIG.wakeWord === "local") {
+    setStatus(crashedBefore
+      ? `${name} is off: checking for on-device speech stopped the browser last time. Set wakeWord: "cloud" or "off".`
+      : `${name} is off: this browser can't recognise speech on the PC itself. Open the kiosk in Chrome, or set wakeWord: "cloud".`, "wake");
+    return;
+  }
+  WAKE.local = local;
+  if (local && recog) recog.processLocally = true;                 // tap-to-talk stays on this PC too
+  const rec = WAKE.rec = new SR();
+  rec.lang = lang; rec.continuous = true; rec.interimResults = true;
+  if (local) {
+    rec.processLocally = true;
+    try { rec.phrases = [new SpeechRecognitionPhrase(`Hey ${CONFIG.botName}`, 8)]; } catch (e) {}
+  }
+  rec.onstart = () => { WAKE.running = true; };
+  rec.onresult = wakeOnResult;
+  rec.onend = () => { WAKE.running = false; if (WAKE.on && !WAKE.hold) setTimeout(wakeStart, WAKE.retryMs); };
+  rec.onerror = e => {
+    if (["not-allowed", "service-not-allowed", "audio-capture"].includes(e.error)) wakeOff(`${name} is off: no microphone found.`);
+    else if (e.error === "language-not-supported") {
+      if (WAKE.local && CONFIG.wakeWord !== "local") {             // the offline pack failed: use the online service instead
+        WAKE.on = false; WAKE.forceCloud = true;
+        try { rec.abort(); } catch (e2) {}
+        setTimeout(wakeInit, 500);
+      } else wakeOff(`${name} is off: the speech pack for ${lang} isn't installed.`);
+    }
+    else if (e.error === "network") WAKE.retryMs = Math.min(WAKE.retryMs * 2, 60000);
+  };
+  WAKE.on = true;
+  setStatus("", "wake");
+  if (state === "idle") setState("idle");
+  wakeStart();
+}
+setInterval(() => {
+  if (WAKE.on && WAKE.armedUntil && !WAKE.inUtterance && Date.now() > WAKE.armedUntil) wakeDisarm();
+}, 500);
+
+/* =========================================================
+   GREETING: the camera notices a face close to the kiosk
+   Runs on this PC only. No picture is saved or sent anywhere, and nobody is identified.
+   ========================================================= */
+function loadScript(src) {
+  return new Promise((ok, no) => {
+    const s = document.createElement("script");
+    s.src = src; s.onload = ok; s.onerror = () => no(new Error(src + " not found"));
+    document.head.appendChild(s);
+  });
+}
+async function seeCamera() {
+  SEE.stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 10 } }, audio: false });
+  SEE.video.srcObject = SEE.stream;
+  await SEE.video.play();
+}
+async function seeInit() {
+  if (!CONFIG.greetPeople) return;
+  try {
+    if (!navigator.mediaDevices) throw new Error("no camera support");
+    if (!window.FaceDetection) await loadScript("vision/face_detection.js");
+    const fd = new FaceDetection({ locateFile: f => "vision/" + f });
+    fd.setOptions({ model: "full", minDetectionConfidence: 0.55 });     // "full" also sees faces a few metres away
+    fd.onResults(seeResults);
+    await Promise.race([fd.initialize(), new Promise((_, no) => setTimeout(() => no(new Error("face detector didn't start")), 30000))]);
+    SEE.fd = fd;
+    SEE.video = document.createElement("video");
+    SEE.video.muted = true; SEE.video.playsInline = true;
+    await seeCamera();
+    SEE.on = true;
+    setInterval(seeTick, 450);
+  } catch (e) {
+    console.warn("Greeting is off:", e);
+    setStatus(/not found$/.test(e.message) ? "Greeting is off: the vision folder is missing."
+      : /NotFound|NotAllowed|NotReadable|Overconstrained|camera/i.test(e.name + e.message) ? "Greeting is off: no camera found."
+      : "Greeting is off: the face detector couldn't start on this PC.", "see");
+  }
+}
+function seePause() {
+  if (!SEE.on || SEE.paused) return;
+  SEE.paused = true;
+  if (SEE.stream) SEE.stream.getTracks().forEach(t => t.stop());
+  SEE.stream = null;
+}
+function seeResume() {
+  if (!SEE.on || !SEE.paused) return;
+  clearTimeout(SEE.resumeTimer);
+  SEE.resumeTimer = setTimeout(async () => {
+    if (camStream || !SEE.paused) return;                 // the parcel camera is in use again
+    try { await seeCamera(); SEE.paused = false; } catch (e) { SEE.resumeTimer = setTimeout(seeResume, 5000); }
+  }, 700);
+}
+async function seeTick() {
+  if (!SEE.on || SEE.paused || SEE.busy || document.hidden || SEE.video.readyState < 2 || !$("parcelBox").hidden) return;
+  SEE.busy = true;
+  try { await SEE.fd.send({ image: SEE.video }); } catch (e) { console.warn("Face detector:", e); }
+  SEE.busy = false;
+}
+function seeResults(res) {
+  const now = Date.now();
+  const faces = (res.detections || []).map(d => d.boundingBox).filter(Boolean).sort((a, b) => b.width - a.width);
+  SEE.lastWidth = faces.length ? faces[0].width : 0;
+  SEE.lastFrame = now;
+  const near = faces.find(b => b.width >= CONFIG.greetFaceSize);
+  if (!near) return;
+  if (now - SEE.lastNear > 2500) {                         // a new arrival: nobody was near for 2.5 s (a missed frame or two is fine)
+    SEE.awayFor = SEE.lastNear ? now - SEE.lastNear : Infinity;
+    SEE.arrived = now;
+    SEE.hits = 0;
+    SEE.greeted = false;
+  }
+  SEE.hits++;
+  SEE.lastNear = now;
+  if (!resetDone) lastActivity = now;                     // someone is still here: don't reset the screen under them
+  const panel = document.body.classList.contains("has-panel");
+  if (!panel && now - pointerLook > 2500) {               // eyes follow the person (the camera picture is not mirrored)
+    faceLook = now;
+    look(-(near.xCenter - 0.5) * 64, (near.yCenter - 0.5) * 28);
+  }
+  // greet once per visit, when nobody has been near for a while and the screen isn't in use
+  if (!SEE.greeted && SEE.hits >= 2 && SEE.awayFor > CONFIG.greetAfterAwaySec * 1000 && now - SEE.arrived < 10000
+      && state === "idle" && !panel && !$("typeBox").value) {
+    SEE.greeted = true;
+    SEE.lastGreet = now;
+    if (!resetDone) welcome();
+    seeGreet();
+  }
+}
+function seeGreet() {
+  const h = new Date().getHours(), hello = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+  const name = CONFIG.botName;
+  if (WAKE.on) say(`${hello}! I'm ${name}. Welcome to ${CONFIG.companyName}! If you have a question, just say, Hey ${name}, and ask me.`,
+                   `${hello}! Say “Hey ${name}” to ask me a question.`);
+  else say(`${hello}! I'm ${name}. Welcome to ${CONFIG.companyName}! Tap a button or type a question to get started.`,
+           `${hello}! Welcome to ${CONFIG.companyName}. How can I help you today?`);
+}
+
+
+/* =========================================================
+   VOICE PICKER: type "change voice" on the kiosk, or press F8
+   The choice is saved in this browser, so the kiosk keeps it.
+   ========================================================= */
+function openVoicePicker() {
+  showOnly("voiceBox", `Choose ${CONFIG.botName}'s voice`);
+  const all = speechSynthesis.getVoices();
+  const voices = all.filter(v => v.lang.startsWith("en"))
+    .sort((a, b) => (CONFIG.cuteVoices.findIndex(c => b.name.includes(c.match)) > -1) - (CONFIG.cuteVoices.findIndex(c => a.name.includes(c.match)) > -1)
+                    || (b.localService ? 0 : 1) - (a.localService ? 0 : 1) || a.name.localeCompare(b.name));
+  const pitch = $("vcPitch"), rate = $("vcRate");
+  const showVals = () => { $("vcPitchV").textContent = (+pitch.value).toFixed(2); $("vcRateV").textContent = (+rate.value).toFixed(2); };
+  pitch.value = voicePitch; rate.value = voiceRate; showVals();
+  pitch.oninput = rate.oninput = () => { activity(); showVals(); };
+  const list = $("vcList"); list.innerHTML = "";
+  if (!voices.length) list.textContent = "No voices found yet. Close this and try again in a few seconds.";
+  for (const v of voices) {
+    const preset = CONFIG.cuteVoices.find(c => v.name.includes(c.match));
+    const row = document.createElement("div");
+    row.className = "vc-row" + (voice && v.name === voice.name ? " on" : "");
+    row.innerHTML = '<div class="vc-name"><span class="vc-sub"></span></div>';
+    row.querySelector(".vc-name").prepend(v.name.replace(/^(Microsoft|Google) /, "").replace(/ - English.*$/, ""));
+    row.querySelector(".vc-sub").textContent = (v.localService ? "Works offline" : "Needs internet") + (preset ? " · cute pick" : "");
+    const listen = document.createElement("button");
+    listen.type = "button"; listen.className = "chip"; listen.textContent = "Listen";
+    listen.onclick = () => {
+      activity();
+      if (preset && !row.dataset.tried) { pitch.value = preset.pitch; rate.value = preset.rate; showVals(); }
+      row.dataset.tried = "1";
+      speakSample(v, +pitch.value, +rate.value);
+    };
+    const pick = document.createElement("button");
+    pick.type = "button"; pick.className = "chip primary"; pick.textContent = "Use this voice";
+    pick.onclick = () => {
+      activity();
+      storeSet("voice", { name: v.name, pitch: +pitch.value, rate: +rate.value });
+      pickVoice();
+      list.querySelectorAll(".vc-row").forEach(r => r.classList.remove("on"));
+      row.classList.add("on");
+      say("Yay! This is my new voice.", "Saved! This is my new voice.");
+    };
+    row.append(listen, pick);
+    list.appendChild(row);
+  }
+  $("vcBtns").innerHTML = "";
+  const auto = document.createElement("button");
+  auto.type = "button"; auto.className = "chip"; auto.textContent = "Back to automatic";
+  auto.onclick = () => { activity(); storeSet("voice", null); pickVoice(); openVoicePicker(); say("OK, back to my automatic voice."); };
+  $("vcBtns").appendChild(auto);
+  $("vcText").textContent = "Tap Listen to hear a voice, adjust pitch and speed, then tap Use this voice.";
+  say("Pick a voice for me. Tap listen to hear each one.", "Pick a voice for me.");
+}
+function speakSample(v, pitch, rate) {
+  stopTalking();
+  const u = new SpeechSynthesisUtterance(`Hi! I'm ${CONFIG.botName}. Welcome to ${CONFIG.companyName}!`);
+  u.voice = v; u.lang = v.lang; u.pitch = pitch; u.rate = rate;
+  u.onstart = () => setState("speaking");
+  u.onend = u.onerror = () => setState("idle");
+  speechSynthesis.speak(u);
+}
+
+/* =========================================================
+   DIAGNOSTICS: press F9 on the kiosk (or open welcome-kiosk.html?debug)
+   Shows what Cubot hears and sees, to find out why something isn't working.
+   ========================================================= */
+let diagTimer = 0;
+function toggleDiag() {
+  const d = $("diag");
+  d.hidden = !d.hidden;
+  clearInterval(diagTimer);
+  if (!d.hidden) { renderDiag(); diagTimer = setInterval(renderDiag, 400); }
+}
+function renderDiag() {
+  aiGpuCheck();
+  const ago = t => t ? Math.round((Date.now() - t) / 1000) + " s ago" : "never";
+  const esc = t => String(t).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+  const ua = (navigator.userAgent.match(/(Edg|Chrome)\/(\d+)/) || []);
+  const lines = [
+    `<b>Browser</b>   ${ua[1] === "Edg" ? "Edge" : ua[1] || "?"} ${ua[2] || ""}`,
+    `<b>Hey Cubot</b> ${WAKE.on ? (WAKE.local ? "ON, on this PC" : "ON, online speech service") + (WAKE.running ? ", listening" : ", restarting") : "OFF: " + (statusNotes.wake || "wakeWord is off")}`,
+    `          heard ${ago(WAKE.heardAt)}: "${esc(WAKE.heard || "")}"`,
+    `          last wake: "${esc(WAKE.matched || "")}"`,
+    `<b>Camera</b>    ${SEE.on ? (SEE.paused ? "lent to the parcel camera" : "ON, checked " + ago(SEE.lastFrame)) : "OFF: " + (statusNotes.see || (CONFIG.greetPeople ? "starting…" : "greetPeople is false"))}`,
+    `          biggest face: ${SEE.lastWidth ? SEE.lastWidth.toFixed(3) : "none"}  (greets at ${CONFIG.greetFaceSize} or bigger)`,
+    `          last greeting: ${ago(SEE.lastGreet)}`,
+    `<b>PC</b>        ${HW.ramGB ? `${HW.ramGB} GB memory, ${HW.gpus.length ? HW.gpus.map(g => `${esc(g.name)} ${g.vramGB} GB`).join(", ") : "no NVIDIA graphics card found"}${HW.cpu ? ", " + esc(HW.cpu) : ""}` : "not measured (needs kiosk-server.py)"}`,
+    `<b>Version</b>   ${(window.KIOSK_VERSION || {}).sha ? `${esc(window.KIOSK_VERSION.version || "")} ${esc(window.KIOSK_VERSION.sha.slice(0, 7))}, installed ${esc(window.KIOSK_VERSION.installed || "?")}` : "not from GitHub yet"}${updateWaiting ? " (new version waiting, reloads when nobody is here)" : ""}`,
+    `<b>AI</b>        ${CONFIG.useAI ? `${esc(CONFIG.model)}${HW.why ? ` (${esc(HW.why)})` : ""}${AI.thinkOnly ? " (thinks first: slow)" : ""}, ${AI.gpu || "checking…"}${AI.warmMs ? `, warmed up in ${(AI.warmMs / 1000).toFixed(1)} s` : ""}` : "off (useAI is false)"}`,
+    `          last answer: ${AI.at ? `first words after ${(AI.firstMs / 1000).toFixed(1)} s, done in ${(AI.totalMs / 1000).toFixed(1)} s` : "none yet"}`,
+    `<b>Internet</b>  ${CONFIG.internet ? (NET.at ? `last search ${ago(NET.at)} via ${esc(NET.source || "nothing")} (${NET.ms} ms): "${esc(NET.query)}"` : "no searches yet") + (NET.error ? `  problem: ${esc(NET.error)}` : "") : "off (internet is false)"}`,
+    `<b>Voice</b>     ${voice ? esc(voice.name) : "none"}  pitch ${(+voicePitch).toFixed(2)} speed ${(+voiceRate).toFixed(2)}${useLocalVoice ? " (fell back to offline voice)" : ""}`,
+    `<b>Screen</b>    ${state}${document.body.classList.contains("has-panel") ? ", panel open" : ""}`,
+    "",
+    "F9 hides this.  F8 or typing 'change voice' picks a voice."
+  ];
+  $("diag").innerHTML = lines.join("\n");
+}
+
+/* ---------------- Chips ---------------- */
+function buildChips() {
+  const box = $("chips");
+  box.innerHTML = "";
+  const add = (label, icon, fn, primary) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip" + (primary ? " primary" : "");
+    b.innerHTML = icon;
+    b.append(label);
+    b.addEventListener("click", fn);
+    box.appendChild(b);
+  };
+  if (INFO.locations.length) add("Find a room", ICON.pin, () => { activity(); $("you").textContent = ""; viewFloor = INFO.here.floor; openPanel({ mode: "map" }); say("Here's our office map. Pick a level, then tap a place."); }, true);
+  if (INFO.people.length) add("Find a person", ICON.person, () => { activity(); $("you").textContent = ""; openPanel({ mode: "people" }); say("Who are you looking for? Tap their name, or type it below."); }, true);
+  add("I have a delivery", ICON.box, () => { activity(); $("you").textContent = ""; openParcel(); }, true);
+  if (lightsReady() && CONFIG.lights.button) add("Lights", ICON.bulb, () => { activity(); $("you").textContent = ""; openLights(); });
+  for (const q of CONFIG.quickQuestions) add(q.label, ICON.chat, () => { stopTalking(); handleUserText(q.ask); });
+}
+
+/* ---------------- Face ---------------- */
+const eyeEls = document.querySelectorAll(".eye");
+let pointerLook = 0;
+function setState(s) {
+  state = s;
+  document.body.classList.remove("listening", "thinking", "speaking");
+  if (s !== "idle") document.body.classList.add(s);
+  $("hint").textContent = {
+    idle: WAKE.on ? `Say "Hey ${CONFIG.botName}", tap a button, or type a question` : "Tap a button, type a question, or tap my face to talk",
+    listening: WAKE.on ? "I'm listening… tap my face to cancel" : "Listening… tap again to stop",
+    thinking: "Let me check…",
+    speaking: "Tap my face to interrupt"
+  }[s];
+  if (s === "speaking" && !countTalk) wakePause(); else wakeResume();    // never listen to my own voice (except countdown numbers)
+}
+function blink() {
+  eyeEls.forEach(e => { e.classList.remove("blink"); void e.offsetWidth; e.classList.add("blink"); });
+  setTimeout(blink, 2500 + Math.random() * 4000);
+}
+function look(x, y) {
+  $("eyes").style.setProperty("--lx", x + "px");
+  $("eyes").style.setProperty("--ly", y + "px");
+}
+function lookAround() {
+  if (Date.now() - pointerLook > 2500 && Date.now() - faceLook > 1500) {
+    if (document.body.classList.contains("has-panel")) look(26, 4);
+    else if (state === "idle") look(Math.random() * 60 - 30, Math.random() * 30 - 15);
+    else look(0, 0);
+  }
+  setTimeout(lookAround, 1800 + Math.random() * 2400);
+}
+document.addEventListener("pointermove", e => {
+  const r = $("eyes").getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const d = Math.max(1, Math.hypot(dx, dy));
+  const k = Math.min(1, d / 400);
+  look((dx / d) * 32 * k, (dy / d) * 20 * k);
+  pointerLook = Date.now();
+});
+
+/* ---------------- Clock and brand ---------------- */
+function tick() {
+  const now = new Date();
+  $("time").textContent = now.toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit" });
+  $("date").textContent = now.toLocaleDateString("en-SG", { weekday: "long", day: "numeric", month: "long" });
+}
+function buildBrand() {
+  const b = $("brand");
+  if (CONFIG.logoImage) {
+    const img = new Image();
+    img.src = CONFIG.logoImage;
+    img.alt = CONFIG.companyName;
+    img.onerror = () => { b.textContent = CONFIG.companyName; };
+    b.appendChild(img);
+  } else b.textContent = CONFIG.companyName;
+}
+
+/* ---------------- Voice out ---------------- */
+let voice = null, voicePitch = CONFIG.speechPitch, voiceRate = CONFIG.speechRate;
+let voiceWarned = false;
+function savedVoice() { return storeGet("voice") || null; }
+function pickVoice() {
+  const voices = speechSynthesis.getVoices();
+  if (!voices.length) return;
+  const en = voices.filter(v => v.lang.startsWith("en"));
+  const find = s => voices.find(v => v.name.toLowerCase().includes(String(s).toLowerCase()));
+  const use = (v, pitch, rate) => { voice = v; voicePitch = pitch; voiceRate = rate; };
+  const saved = savedVoice();                                    // chosen on the kiosk with "change voice"
+  if (saved && find(saved.name)) return use(find(saved.name), saved.pitch, saved.rate);
+  const hint = String(CONFIG.voiceHint || "auto");
+  if (hint.toLowerCase() !== "auto") {
+    if (find(hint)) return use(find(hint), CONFIG.speechPitch, CONFIG.speechRate);
+    if (!voiceWarned) { voiceWarned = true; setStatus(`Voice "${hint}" isn't on this PC, so I picked another one.`, "voice"); }
+  }
+  for (const c of CONFIG.cuteVoices || []) { const v = find(c.match); if (v) return use(v, c.pitch, c.rate); }
+  use(en.find(v => /female|zira|samantha/i.test(v.name)) || en[0] || voices[0], CONFIG.speechPitch, CONFIG.speechRate);
+}
+speechSynthesis.onvoiceschanged = pickVoice;
+pickVoice();
+/* Speech queue. Chrome/Edge sometimes drop speech right after cancel(), or an online voice
+   fails silently, so each sentence is watched: if it never starts, Cubot retries it with the
+   built-in Windows voice. */
+let speechGen = 0, speakingNow = false, useLocalVoice = false;
+function localVoice() {
+  const en = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en") && v.localService);
+  return en.find(v => /zira|female|hazel|susan/i.test(v.name)) || en[0] || null;
+}
+function enqueueSpeech(text) {
+  text = text.trim();
+  if (!text) return;
+  speakQueue.push(text);
+  if (!speakingNow) {
+    speakingNow = true;
+    const g = speechGen;
+    setTimeout(() => speakNext(g), 120);          // small gap after cancel() so the browser doesn't drop it
+  }
+}
+function speakNext(g) {
+  if (g !== speechGen) return;
+  if (!speakQueue.length) { speakingNow = false; if (streamDone) finishTurn(); else setState("thinking"); return; }
+  const text = speakQueue.shift();
+  const v = useLocalVoice ? localVoice() : voice;
+  const u = new SpeechSynthesisUtterance(text);
+  if (v) { u.voice = v; u.lang = v.lang; } else u.lang = CONFIG.speechLang;
+  u.rate = voiceRate;
+  u.pitch = voicePitch;
+  let started = false, finished = false, watchdog = 0;
+  const done = retryLocal => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(watchdog);
+    if (g !== speechGen) return;
+    if (retryLocal && !useLocalVoice && localVoice()) {
+      useLocalVoice = true;
+      speakQueue.unshift(text);
+      setStatus(`The voice "${voice ? voice.name : "default"}" isn't working right now, so I'm using the built-in voice.`);
+    }
+    setTimeout(() => speakNext(g), retryLocal ? 150 : 0);
+  };
+  u.onstart = () => { started = true; clearTimeout(watchdog); setState("speaking"); };
+  u.onend = () => done(!started);
+  u.onerror = e => done(!started && e.error !== "interrupted" && e.error !== "canceled");
+  if (speechSynthesis.paused) speechSynthesis.resume();
+  speechSynthesis.speak(u);
+  watchdog = setTimeout(() => { if (!started) { speechSynthesis.cancel(); done(true); } }, 4000);
+}
+function finishTurn() {
+  setState("idle");
+  activity();
+  if (CONFIG.handsFree) setTimeout(startListening, 400);
+}
+let lastSpoken = "";
+function say(text, shown) {
+  stopTalking();
+  countTalk = false;
+  if (text.trim().length > 3) lastSpoken = text;
+  $("bot").textContent = shown || text;
+  streamDone = true;
+  (text.match(/[^.!?]+[.!?]*/g) || [text]).forEach(enqueueSpeech);
+  if (!speakingNow && !speakQueue.length) finishTurn();
+}
+function stopTalking() {
+  speechGen++;
+  speakQueue = [];
+  speakingNow = false;
+  speechSynthesis.cancel();
+}
+// Browsers only allow sound after the first tap/key, so "unlock" speech on the first touch.
+let speechUnlocked = false;
+function unlockSpeech() {
+  if (speechUnlocked) return;
+  speechUnlocked = true;
+  const u = new SpeechSynthesisUtterance(" ");
+  u.volume = 0;
+  speechSynthesis.speak(u);
+}
+document.addEventListener("pointerdown", unlockSpeech, { once: true });
+document.addEventListener("keydown", unlockSpeech, { once: true });
+
+/* ---------------- Voice in ---------------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null;
+if (SR) {
+  recog = new SR();
+  recog.lang = CONFIG.speechLang;
+  recog.interimResults = true;
+  let finalText = "";
+  recog.onstart = () => { finalText = ""; setState("listening"); };
+  recog.onresult = e => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) finalText += t; else interim += t;
+    }
+    $("you").textContent = "“" + (finalText + interim).trim() + "”";
+  };
+  recog.onend = () => {
+    if (finalText.trim()) handleUserText(finalText.trim());
+    else if (state === "listening") setState("idle");
+  };
+  recog.onerror = e => {
+    if (e.error === "not-allowed" || e.error === "audio-capture") setStatus("No microphone found. Visitors can still type or tap.");
+    else if (e.error === "network") setStatus("Voice input needs internet. Visitors can still type or tap.");
+  };
+}
+function startListening() {
+  if (WAKE.on) { wakeBlip(); wakeArm(); return; }          // the always-on listener takes the question
+  if (!recog) { setStatus("Voice input needs Chrome or Edge."); return; }
+  stopTalking();
+  try { recog.start(); } catch (_) {}
+}
+
+/* ---------------- Timers, countdowns, reminders, "turn the lights on in 5 seconds", quick maths ---------------- */
+const NUMW = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11,
+  twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20,
+  thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+/* "twenty five" -> "25", "a hundred" stays words (rare at a kiosk) */
+function numify(text) {
+  const w = Object.keys(NUMW).join("|");
+  return text.toLowerCase()
+    .replace(new RegExp(`\\b(twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)[\\s-]+(one|two|three|four|five|six|seven|eight|nine)\\b`, "g"), (_, a, b) => String(NUMW[a] + NUMW[b]))
+    .replace(new RegExp(`\\b(${w})\\b`, "g"), m => String(NUMW[m]));
+}
+/* "at 6pm", "5:34pm", "5 34 p.m.", "for 5.34pm", "until 17:34", "at noon" -> time in ms (the next time it happens) */
+function parseClock(t) {
+  let h, min = 0, ap = "", text = "";
+  let m = t.match(/\b(?:at|by|until|till)\s+(noon|midday|midnight)\b/);
+  if (m) { h = m[1] === "midnight" ? 0 : 12; ap = "x"; text = m[0]; }
+  else {
+    const AMPM = String.raw`(a\.?\s?m\b\.?|p\.?\s?m\b\.?|o'?clock\b)`;
+    const re = new RegExp(String.raw`(?:\b(at|by|until|till|for|to|on)\s+)?\b(\d{1,2})(?!\d)(?:([:.]|\s)(\d{2}))?\s*` + AMPM + "?", "g");
+    const compact = new RegExp(String.raw`\b(\d{1,2})(\d{2})\s*` + AMPM, "g");      // "534pm"
+    let best = null;
+    for (const x of t.matchAll(re)) {
+      const [all, pre, hh, sep, mm, apx] = x;
+      const after = t.slice(x.index + all.length);
+      if (/^\s*(seconds?|secs?|minutes?|mins?|hours?|hrs?|s|m|h)\b/.test(after)) continue;   // "for 5 minutes" is a duration
+      if (mm && /^\s*(seconds?|secs?|minutes?|mins?)\b/.test(after)) continue;
+      const ok = apx || (mm && sep !== " ") || (mm && sep === " " && pre && /^(at|by|until|till)$/.test(pre)) || (!mm && pre && /^(at|by|until|till)$/.test(pre));
+      if (ok) { best = { hh: +hh, mm: +(mm || 0), ap: apx || "", text: all }; break; }
+    }
+    if (!best) for (const x of t.matchAll(compact)) { best = { hh: +x[1], mm: +x[2], ap: x[3], text: x[0] }; break; }
+    if (!best) return null;
+    h = best.hh; min = best.mm; ap = best.ap.toLowerCase().startsWith("o") ? "" : best.ap.replace(/[^ap]/gi, "").toLowerCase(); text = best.text;
+    if (h > 23 || min > 59) return null;
+    if (ap === "p" && h < 12) h += 12;
+    if (ap === "a" && h === 12) h = 0;
+  }
+  const now = new Date(), d = new Date(now);
+  d.setHours(h, min, 0, 0);
+  if (!ap && h <= 12) { while (d <= now) d.setTime(d.getTime() + 12 * 3600e3); }     // "at 6" = the next 6 o'clock
+  else if (d <= now) d.setDate(d.getDate() + 1);
+  return { at: d.getTime(), text };
+}
+/* "5 seconds", "1 minute 30 seconds", "half an hour", "an hour and a half", "90s" -> seconds */
+function parseDuration(t) {
+  let total = 0, found = false;
+  const add = s => { total += s; found = true; return " "; };
+  t = t.replace(/\bhalf an? hour\b/g, () => add(1800)).replace(/\bhalf a minute\b/g, () => add(30))
+       .replace(/\b(a )?quarter (of an )?hour\b/g, () => add(900));
+  const U = { s: 1, sec: 1, secs: 1, second: 1, seconds: 1, m: 60, min: 60, mins: 60, minute: 60, minutes: 60, h: 3600, hr: 3600, hrs: 3600, hour: 3600, hours: 3600 };
+  t.replace(/\b(\d+(?:\.\d+)?|an?)\s*(and a half\s+)?(seconds?|secs?|minutes?|mins?|hours?|hrs?)\b(\s+and a half)?|\b(\d+(?:\.\d+)?)(s|m|h)\b/g,
+    (_, n, half1, unit, half2, n2, u2) => {
+      const num = n2 ? +n2 : /^an?$/.test(n) ? 1 : +n;
+      const per = U[unit || u2];
+      add((num + (half1 || half2 ? 0.5 : 0)) * per);
+      return " ";
+    });
+  return found ? Math.round(total) : 0;
+}
+/* when something should happen: { at, say: "in 5 seconds" / "at 6:00 pm" } */
+function parseWhen(text) {
+  const t = numify(text);
+  const clock = parseClock(t);
+  if (clock) return { at: clock.at, clock: true, say: "at " + fmtClock(clock.at) + fmtDay(clock.at) };
+  const s = parseDuration(t);
+  return s ? { at: Date.now() + s * 1000, secs: s, say: "in " + fmtSpan(s) } : null;
+}
+const fmtDay = ms => { const d = new Date(ms), n = new Date(); return d.toDateString() === n.toDateString() ? "" : " tomorrow"; };
+const fmtClock = ms => new Date(ms).toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit", hour12: true }).replace(/\s?([ap])\.?m\.?/i, (_, x) => " " + x.toLowerCase() + "m");
+function fmtSpan(s) {
+  if (s >= 600) s = Math.round(s / 60) * 60;              // long times: no seconds ("2 hours and 5 minutes")
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const p = (n, w) => n ? `${n} ${w}${n === 1 ? "" : "s"}` : "";
+  return [p(h, "hour"), p(m, "minute"), p(sec, "second")].filter(Boolean).join(" and ") || "0 seconds";
+}
+const fmtLeft = s => { s = Math.max(0, s); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60; return (h ? h + ":" + String(m).padStart(2, "0") : m) + ":" + String(x).padStart(2, "0"); };
+
+function jobsText() {
+  if (!JOBS.length) return "none";
+  return JOBS.map(j => `${j.label} (${j.kind === "lights" ? "lights" : "timer"}, ${fmtSpan(Math.max(0, Math.ceil((j.at - Date.now()) / 1000)))} left, at ${fmtClock(j.at)})`).join("; ");
+}
+const JOBS = [];          // { id, at, total, kind: "timer" | "lights", label, count, action, said }
+let jobSeq = 0, timerAsk = null, countTalk = false;       // countTalk: only countdown numbers are being spoken, so keep listening for "stop"
+function addJob(job) {
+  job.id = ++jobSeq; job.said = new Set();
+  JOBS.push(job); JOBS.sort((a, b) => a.at - b.at);
+  renderJobs();
+  return job;
+}
+function cancelJobs(kind) {
+  const gone = JOBS.filter(j => !kind || j.kind === kind);
+  for (const j of gone) JOBS.splice(JOBS.indexOf(j), 1);
+  renderJobs();
+  return gone.length;
+}
+let jobsSig = "";
+function saveJobs() {
+  const sig = JOBS.map(j => j.id + ":" + j.at).join(",");
+  if (sig === jobsSig) return;
+  jobsSig = sig;
+  storeSet("jobs", JOBS.map(({ said, ...j }) => j));
+}
+function restoreJobs() {
+  const saved = storeGet("jobs") || [], now = Date.now(), missed = [];
+  for (const j of saved) {
+    if (!j || !j.at) continue;
+    if (j.at > now) { j.said = new Set(); j.id = ++jobSeq; JOBS.push(j); }
+    else if (j.kind === "lights" && now - j.at < 15 * 60e3) { j.said = new Set(); j.id = ++jobSeq; j.at = now + 3000; JOBS.push(j); }  // just missed: do it now
+    else missed.push(j);
+  }
+  JOBS.sort((a, b) => a.at - b.at);
+  jobsSig = "x"; renderJobs();
+  if (missed.length) console.info("Cubot: these timers finished while the kiosk was closed:", missed.map(j => j.label));
+}
+function renderJobs() {
+  saveJobs();
+  const box = $("timers");
+  box.innerHTML = "";
+  box.classList.toggle("many", JOBS.length > 2 || (JOBS.length > 1 && document.body.classList.contains("has-panel")));
+  for (const j of JOBS) {
+    const left = Math.ceil((j.at - Date.now()) / 1000);
+    const el = document.createElement("div");
+    el.className = "tm" + (left <= 10 ? " soon" : "");
+    el.innerHTML = `<span class="tm-icon">${j.kind === "lights" ? ICON.bulb : ICON.clock}</span><span class="tm-label"></span><b class="tm-left"></b><button type="button" class="tm-x" aria-label="Cancel">×</button>`;
+    el.querySelector(".tm-label").textContent = j.label;
+    el.querySelector(".tm-left").textContent = fmtLeft(left);
+    el.querySelector(".tm-x").addEventListener("click", () => { activity(); JOBS.splice(JOBS.indexOf(j), 1); renderJobs(); say(j.kind === "lights" ? "OK, I cancelled that." : "OK, timer cancelled."); });
+    box.appendChild(el);
+  }
+  const big = JOBS.find(j => j.count && j.at - Date.now() <= 10500);
+  $("bigCount").hidden = !big;
+  if (big) $("bigNum").textContent = Math.max(1, Math.ceil((big.at - Date.now()) / 1000));
+}
+$("bigStop").addEventListener("click", () => {
+  activity(); unlockSpeech();
+  const n = JOBS.filter(j => j.count).length;
+  for (const j of JOBS.filter(j => j.count)) JOBS.splice(JOBS.indexOf(j), 1);
+  renderJobs(); $("bigCount").hidden = true;
+  if (n) say("OK, countdown stopped.");
+});
+function chime(times = 3) {
+  try {
+    const ac = chime.ac || (chime.ac = new (window.AudioContext || window.webkitAudioContext)());
+    for (let i = 0; i < times; i++) for (const [f, dt] of [[880, 0], [1320, 0.14]]) {
+      const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime + i * 0.5 + dt;
+      o.frequency.value = f; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.35, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + 0.32);
+    }
+  } catch (_) {}
+}
+async function fireJob(j) {
+  if (j.kind === "lights") {
+    const c = lightsCfg(), { chs, on } = j.action;
+    const what = chs.length === 2 ? `all the ${c.room} lights` : `the ${c.lights[chs[0] - 1].name.toLowerCase()}`;
+    try {
+      const st = await lightsRead();
+      for (const ch of chs) await lightsSet(ch, on, st.inv[ch]);
+      if (!$("lightsBox").hidden) lightsRender({ ...st, on: { ...st.on, ...Object.fromEntries(chs.map(ch => [ch, on])) } });
+      say(`Turning ${on ? "on" : "off"} ${what} now.`);
+    } catch (e) { say(`Sorry, I couldn't switch ${what}. ${/trusted network/i.test(e.message) ? "I can only do that from the office network." : "I can't reach the light switch."}`); }
+    return;
+  }
+  chime(j.count ? 1 : 3);
+  const done = j.remind ? `Reminder: ${j.remind}.` : j.count ? "Time's up!" : /^Timer \d/.test(j.label) ? `It's ${fmtClock(j.at)}. Time's up!` : `Time's up! Your ${j.label.toLowerCase()} is done.`;
+  say(done);
+  $("bigCount").hidden = false; $("bigNum").textContent = "0";
+  setTimeout(() => { if (!JOBS.some(x => x.count && x.at - Date.now() <= 10500)) $("bigCount").hidden = true; }, 1500);
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const j of [...JOBS]) {
+    const left = Math.ceil((j.at - now) / 1000);
+    if (now >= j.at) { JOBS.splice(JOBS.indexOf(j), 1); fireJob(j); continue; }
+    // a countdown says the last numbers out loud; a long timer gives a heads-up a minute before
+    if (j.count && left <= 10 && !j.said.has(left)) { j.said.add(left); stopTalking(); countTalk = true; enqueueSpeech(String(left)); streamDone = true; }
+    else if (!j.count && j.total >= 300 && left === 60 && !j.said.has(60)) { j.said.add(60); say(`One minute left on your ${j.label.toLowerCase()}.`); }
+  }
+  if (JOBS.length || !$("bigCount").hidden) renderJobs();
+}, 200);
+
+/* Things Cubot can DO. Returns true if the request was one of them. */
+function tryActions(text, quote) {
+  const t = numify(text);
+  const keep = () => { $("you").textContent = quote; return true; };
+  const TIMERISH = /\b(timers?|count ?downs?|countdowns?|reminders?|alarms?|schedules?)\b/;
+
+  // cancel: "cancel the timer", "stop the countdown", "never mind the light timer"
+  const CANCEL = /\b(cancel|cancell?ed|stop|delete|clear|remove|reset|never ?mind|forget|end|abort|kill|turn off|switch off|don'?t)\b/;
+  const bareCancel = JOBS.length && /^\s*(please\s+)?(cancel|stop|never ?mind|forget|abort)(\s+(it|that|this|them|everything|all|please|now))*\s*[.!]?\s*$/.test(t);
+  if (bareCancel || (CANCEL.test(t) && (TIMERISH.test(t) || (/\blights?\b/.test(t) && JOBS.some(j => j.kind === "lights") && /\b(cancel|never ?mind|forget)\b/.test(t))))) {
+    const kind = /\blights?\b/.test(t) ? "lights" : /\b(all|every|everything|them)\b/.test(t) || bareCancel ? "" : "timer";
+    const n = cancelJobs(kind);
+    say(n ? `OK, I cancelled ${n === 1 ? "it" : n === 2 ? "both" : "all " + n}.` : "There's nothing to cancel.");
+    return keep();
+  }
+  // "how long is left on the timer?"
+  if (TIMERISH.test(t) && /\b(how (much|long)|left|remaining|status|is there|are there|any|do you have|did you|have you|what|which|check|show|list|running|set already|already)\b/.test(t) && !/\b(set|start|make|create|add)\b.*\b(for|in|at)\b\s*\d/.test(t)) {
+    if (!JOBS.length) say("There's no timer running.");
+    else say(JOBS.map(j => `${j.label}: ${fmtSpan(Math.max(0, Math.ceil((j.at - Date.now()) / 1000)))} left`).join(". ") + ".");
+    return keep();
+  }
+  // lights now or later: "turn on the lights in 5 seconds", "switch off the wall light at 6pm"
+  const lightAsk = lightsIntent(text);
+  if (lightAsk) {
+    const when = lightAsk.action && parseWhen(text);
+    openLights(lightAsk.action && when ? { ...lightAsk.action, at: when.at, when: when.say } : lightAsk.action);
+    return keep();
+  }
+  // timers and countdowns: "countdown 10 seconds", "count down from ten", "set a timer for 5 minutes", "remind me in 10 minutes to call John"
+  const from = t.match(/\bcount ?down (?:from )?(\d+)\b(?!\s*(min|hour|hr|sec|s\b|m\b|h\b))/);
+  const remind = /\bremind me\b/.test(t);
+  if (timerAsk && Date.now() - timerAsk.at > 30000) timerAsk = null;      // a "how long?" question is only open for 30 s
+  if (TIMERISH.test(t) || from || remind || timerAsk) {
+    const count = /\bcount/.test(t) || (timerAsk && timerAsk.kind === "count");
+    let secs = from ? +from[1] : 0, at = 0, clock = false;
+    if (!secs) { const w = parseWhen(text); if (w) { at = w.at; clock = !!w.clock; secs = Math.round((w.at - Date.now()) / 1000); } }
+    const bare = !secs && timerAsk && t.match(/^\D*?(\d+(?:\.\d+)?)\D*$/);          // answered "ten" to "how long?"
+    if (bare) secs = Math.round(+bare[1] * (timerAsk.kind === "count" ? 1 : 60));
+    if (!secs) {
+      if (!TIMERISH.test(t) && !remind) { timerAsk = null; return false; }      // follow-up that wasn't a time after all
+      timerAsk = { kind: count ? "count" : "timer", at: Date.now() };
+      say(count ? "Sure! How many seconds should I count down from?" : "Sure! How long should the timer be?");
+      return keep();
+    }
+    timerAsk = null;
+    if (secs > 24 * 3600) { say("That's a bit long for me. I can do timers up to one day."); return keep(); }
+    let about = "";
+    if (remind) {
+      const r = text.match(/\b(?:to|that|about)\s+(.+?)\s*$/i);
+      about = r ? r[1].replace(/\b(in|after|at|by)\s+[\w:. ]*(seconds?|secs?|minutes?|mins?|hours?|hrs?|[ap]\.?m\.?|o'?clock|noon|midnight)\b/gi, "").replace(/\byou\b/gi, "I").replace(/\bmy\b/gi, "your").replace(/[?.!]+$/, "").trim() : "";
+    }
+    const label = remind ? (about ? `Remind: ${about}` : "Reminder") : count ? "Countdown" : clock ? `Timer ${fmtClock(at)}` : `${fmtSpan(secs).replace(/ and /g, " ")} timer`;
+    addJob({ kind: "timer", at: at || Date.now() + secs * 1000, total: secs, label, count: count && secs <= 600, remind: remind ? (about || "your reminder") : "" });
+    closePanel();
+    if (count && secs <= 10) { $("bot").textContent = `Counting down from ${secs}!`; $("you").textContent = quote; return true; }    // the numbers speak for themselves
+    say(remind ? `OK, I'll remind you ${parseWhen(text) ? parseWhen(text).say : "in " + fmtSpan(secs)}${about ? " to " + about : ""}.`
+      : clock && !count ? `OK, timer set for ${fmtClock(at)}${fmtDay(at)}, that's in ${fmtSpan(secs)}. I'll chime then.`
+      : `OK, ${count ? "counting down" : "timer set for"} ${fmtSpan(secs)}${count ? "." : ". I'll chime when it's done."}`);
+    return keep();
+  }
+  // quick maths: "what's 25 times 4", "15 percent of 80", "what is 7 plus 8"
+  const calc = t.replace(/^\s*(hey cubot,?\s*)?(what'?s|what is|whats|calculate|how much is|work out)\s+/, "").replace(/[?=]+\s*$/, "").trim();
+  if (calc !== t.trim() || /^\d[\d\s.,]*\s*(\+|-|\*|\/|x|plus|minus|times|divided)/.test(calc)) {
+    const expr = calc.replace(/,(?=\d{3})/g, "").replace(/(\d+(?:\.\d+)?)\s*(percent|%)\s*of\s*/g, "($1/100)*")
+      .replace(/\bplus\b|\band\b/g, "+").replace(/\bminus\b|\btake away\b/g, "-").replace(/\b(times|multiplied by|x)\b|×/g, "*")
+      .replace(/\b(divided by|over)\b|÷/g, "/").replace(/\bsquared\b/g, "**2").replace(/\s+/g, " ").trim();
+    if (/^[\d\s.+\-*/()]+$/.test(expr) && /\d\s*[-+*/]+\s*[\d(]/.test(expr)) {
+      try {
+        const v = Function(`"use strict"; return (${expr});`)();
+        if (Number.isFinite(v)) {
+          const nice = Math.abs(v) >= 1e6 ? v.toLocaleString("en-SG", { maximumFractionDigits: 2 }) : String(Math.round(v * 10000) / 10000);
+          closePanel(); say(`That's ${nice}.`, `${calc} = ${nice}`); return keep();
+        }
+      } catch (_) {}
+    }
+  }
+  // "say that again"
+  if (/\b(say (that|it) again|repeat (that|it|yourself)|pardon|come again|what did you say|sorry what)\b/.test(t) && $("bot").textContent.trim()) {
+    say(lastSpoken || $("bot").textContent); return keep();
+  }
+  return false;
+}
+
+/* ---------------- Answering ---------------- */
+function documentAnswer(question) {
+  const hits = findChunks(question, 1);
+  if (!hits.length) return "Sorry, I don't have that information. Please ask one of our staff, they'll be happy to help.";
+  const s = hits[0].text.match(/[^.!?]+[.!?]*/g) || [hits[0].text];
+  return s.slice(0, 3).join(" ").trim();
+}
+/* The AI gets the same instructions and facts every time (when the company text is short), so Ollama can
+   reuse the work it already did on them and only has to read the new question: much faster replies. */
+const AI_OPTIONS = { temperature: 0.2, num_ctx: 4096, num_predict: 160 };
+const AI = { firstMs: 0, totalMs: 0, at: 0, warm: false, warmMs: 0, gpu: "", gpuAt: 0, thinking: false, thinkOnly: false, historyTurns: 4 };
+/* Models like Qwen3 can "think" before answering. We switch that off. Some versions can't switch it off: then we let
+   Ollama keep the thinking separate (think: true) so it is never spoken, and give it room to finish. */
+const aiExtra = () => (AI.thinkOnly ? { think: true, options: { ...AI_OPTIONS, num_predict: 1200 } } : AI.thinking ? { think: false } : {});
+const THINKY = /^\s*(<think>|(okay|ok|alright|hmm+)\b[,.!]?\s*(so|let|the|i|first|now|we)\b|so,? the (user|visitor)|the (user|visitor) (is|said|says|asked|asks|wants|just|might|has)|let me (think|see|figure|check)|first,? i\b|i need to (figure|work|think|check|answer))/i;
+function noteThinkOnly() {
+  if (AI.thinkOnly) return;
+  AI.thinkOnly = true;
+  setStatus(`The AI model "${CONFIG.model}" thinks out loud before answering, which is slow. Run the latest Cubot-Update.bat to switch to a faster model.`, "ai");
+}
+function systemPrompt(question) {
+  const all = INFO.chunks;
+  const words = all.reduce((n, c) => n + c.text.split(/\s+/).length, 0);
+  let facts = words <= 1800 ? all : findChunks(question, 4);
+  if (!facts.length) facts = all.slice(0, 2);
+  const places = INFO.locations.map(l => `${l.name} (Level ${l.floor})${l.aliases.length ? ": " + l.aliases.slice(0, 8).join(", ") : ""}`);
+  const people = INFO.people.map(p => p.name + (p.role ? " - " + p.role : ""));
+  return `You are ${CONFIG.botName}, the friendly welcome robot at the ${CONFIG.companyName} office. You speak out loud to visitors.
+Work out what the visitor really needs, even if they ask in a roundabout way, then reply in ONE of these ways:
+1. They want to go somewhere, ask where something is, or need something a place has (a drink, a toilet, somewhere to wait,
+   a meeting room, parking, deliveries...). Reply with exactly one line: GO: <place name copied exactly from PLACES>
+2. They are looking for a person, by name or by job, team or what the person handles (for example "someone about invoices").
+   Reply with exactly one line: PERSON: <full name copied exactly from PEOPLE>
+3. They want you to DO something: a countdown, a timer, a reminder, check or cancel a timer, maths, or switching the ${lightsReady() ? lightsCfg().room + " " : ""}lights now or later.
+   Reply with exactly one line: DO: <the request in plain short words, times as numbers>
+   For example: "DO: remind me in 15 minutes to call John", "DO: turn off the wall light in 10 minutes", "DO: countdown 30 seconds",
+   "DO: timer at 5:34 pm", "DO: cancel the timer", "DO: how long is left on the timer". TIMERS RUNNING lists what is set now.
+${CONFIG.internet ? `4. They ask about the world outside this office: news, weather, traffic, sports, prices, exchange rates, public
+   holidays, other companies or places, the time in another country, or a general question you can't answer for sure.
+   Reply with exactly one line: SEARCH: <short web search query>
+   Never search for things about ${CONFIG.companyName}, this office or its people: use FACTS for those.
+` : ""}${CONFIG.internet ? 5 : 4}. Anything else: answer in 1 to 3 short, warm sentences, using FACTS and NOW. If they don't cover it, say you're
+   not sure and suggest asking a staff member. Never make things up. No lists, no markdown, no emojis.
+
+PLACES:
+${places.join("\n")}
+
+PEOPLE:
+${people.join("\n")}
+
+FACTS:
+${facts.map(c => "- " + c.text).join("\n")}
+
+NOW: ${nowText()} (Singapore time)
+TIMERS RUNNING: ${jobsText()}
+ON SCREEN: ${screenText()}`;      // last, so everything above stays cached between questions
+}
+/* what the visitor is looking at, so "how do I get there?" or "who sits there?" make sense */
+function screenText() {
+  if (!panelTarget) return "nothing";
+  const t = panelTarget;
+  return `directions to ${t.name}${t.floor != null ? ` (${floorOf(t.floor).name})` : ""}${t.person ? `, where ${t.person.name}${t.person.role ? " (" + t.person.role + ")" : ""} sits` : ""}. "There" or "it" means this place.`;
+}
+function nowText() {
+  return new Date().toLocaleString("en-SG", { weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+}
+/* "What time is it?", "What's the date today?": straight from the PC clock, no AI needed */
+const TIME_ASK = /\b(what time is it|what'?s the time|what is the time|time is it now|the time now|time now|current time|tell me the time|what('?s| is) (the )?(date|day) today|today'?s date|what('?s| is) the date|what day is (it|today)|which day is (it|today)|what day of the week)\b/i;
+function timeAnswer(text) {
+  const d = new Date();
+  const time = d.toLocaleTimeString("en-SG", { hour: "numeric", minute: "2-digit", hour12: true }).replace(/\s?([ap])\.?m\.?/i, (_, x) => " " + x.toLowerCase() + "m");
+  const date = d.toLocaleDateString("en-SG", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  return /\b(date|day)\b/i.test(text) && !/\btime\b/i.test(text) ? `Today is ${date}.` : `It's ${time}, on ${date}.`;
+}
+
+/* The AI asked to look something up: search the internet through kiosk-server.py */
+const NET = { source: "", at: 0, query: "", ms: 0, error: "" };
+async function webSearch(query) {
+  try {
+    const r = await fetch("/api/search?q=" + encodeURIComponent(query), { signal: AbortSignal.timeout(15000) });
+    if (r.status === 404 || r.status === 501) { NET.error = "old web server: run Cubot-Update.bat"; setStatus("Internet search needs the new kiosk server. Run Cubot-Update.bat.", "net"); return []; }
+    const d = await r.json();
+    Object.assign(NET, { source: d.source || "", at: Date.now(), query, ms: d.ms || 0, error: (d.errors || []).join("; ") });
+    return d.results || [];
+  } catch (e) { NET.error = String(e.message || e); return []; }
+}
+
+/* The AI picked a place or a person: show the route like a normal search */
+function aiRoute(kind, name) {
+  name = name.replace(/\s*\((level|lvl|l)\s*\d+\)\s*$/i, "").replace(/[.\s]+$/, "").trim();
+  const low = name.toLowerCase();
+  if (/^go$/i.test(kind)) {
+    const loc = INFO.locations.find(l => l.name.toLowerCase() === low) || (findLocation(name) || {}).loc;
+    if (loc) { goToPlace(loc); return loc.name; }
+  } else {
+    const exact = INFO.people.find(p => p.name.toLowerCase() === low);
+    const hits = exact ? [exact] : findPeople(name);
+    if (hits.length === 1) { goToPerson(hits[0]); return hits[0].name; }
+  }
+  return "";
+}
+
+async function handleUserText(text) {
+  activity();
+  const quote = "“" + text + "”";
+  $("you").textContent = quote;
+
+  // Voice settings: "change voice", "cuter voice"
+  if (/\b(change|choose|pick|cuter|cute|different|another|new)\b.*\bvoice\b|\bvoice (settings?|options?)\b/i.test(text)) {
+    openVoicePicker(); $("you").textContent = quote; return;
+  }
+
+  // "What time is it?" (asking about another country goes to the AI, which can look it up)
+  if (TIME_ASK.test(text) && !/\b(in|at)\s+(?!singapore\b|here\b|the office\b)[a-z]/i.test(text.replace(TIME_ASK, ""))) {
+    closePanel(); say(timeAnswer(text)); $("you").textContent = quote; return;
+  }
+
+  // 0. "Where am I?"
+  if (/\b(where am i|where are we|where is this|my location|current location|which (floor|level) am i)\b/i.test(text)) {
+    const spot = INFO.locations.find(l => l.name === INFO.here.name);
+    const lvl = floorOf(INFO.here.floor).name;
+    viewFloor = INFO.here.floor;
+    openPanel({ mode: "map", title: "You are here" });
+    $("pText").textContent = spot ? `${spot.name}, ${lvl}.` : lvl;
+    say(spot ? `You're in ${theName(spot)}, on ${lvl}. Ask me where you'd like to go.` : `You're on ${lvl}. Ask me where you'd like to go.`);
+    $("you").textContent = quote;
+    return;
+  }
+
+  // While choosing who a parcel is for, a typed name narrows the list
+  if (parcelPicking && !$("parcelBox").hidden) {
+    const hits = findPeople(text);
+    chooseReceiver(hits, hits.length ? "Is the parcel for this person?" : "I couldn't find that name. Please pick from the list.");
+    $("you").textContent = quote;
+    return;
+  }
+
+  // Parcels and deliveries: camera reads the label, then Telegram tells the person and HR
+  if (/\b(parcels?|deliver(y|ies|ing)?|courier|packages?|lalamove|ninja ?van|dhl|fedex|food ?panda|grab ?(food|express)|mail)\b/i.test(text)) {
+    openParcel(text);
+    $("you").textContent = quote;
+    return;
+  }
+
+  // Things Cubot can do: timers, countdowns, reminders, lights now or later, quick maths, "say that again"
+  if (tryActions(text, quote)) return;
+
+  // 1. Places and people come straight from the document and are shown on the map.
+  const locHit = findLocation(text);
+  const wantsPlace = locHit && (WANTS_DIRECTIONS.test(text) || text.trim().split(/\s+/).length <= 4);
+  if (wantsPlace && locHit.multiWord) { goToPlace(locHit.loc); $("you").textContent = quote; return; }
+  const people = findPeople(text);
+  if (people.length === 1) { goToPerson(people[0]); $("you").textContent = quote; return; }
+  if (people.length > 1) {
+    openPanel({ mode: "people", people, title: "Who do you mean?" });
+    say(`I found ${people.length} people. Tap the one you're looking for.`);
+    return;
+  }
+  if (wantsPlace) { goToPlace(locHit.loc); $("you").textContent = quote; return; }
+  if (/\b(map|floor plan|layout)\b/i.test(text)) { openPanel({ mode: "map" }); say("Here's our office map. Pick a level, then tap a place."); return; }
+  if (/\b(who works|staff list|directory|team members|find someone|looking for someone)\b/i.test(text)) {
+    openPanel({ mode: "people" }); say("Here's our team. Tap a name to see where they sit."); return;
+  }
+
+  // 2. Everything else: answer from the document (with or without the AI).
+  if (!CONFIG.useAI) { say(documentAnswer(text)); return; }
+
+  setState("thinking");
+  $("bot").textContent = "";
+  streamDone = false;
+  const T = { buffer: "", shown: "" };          // text waiting to be spoken / text already on screen
+  const t0 = performance.now(); let tFirst = 0;
+  const ROUTE = /^[\s*"'`]*(GO|PERSON|SEARCH|DO)\s*:\s*/i;
+  const flush = final => {
+    let m;
+    // start talking at the first comma of a long sentence, so the visitor hears something sooner
+    if (!T.shown && (m = T.buffer.match(/^[^.!?]*?[,;:](?=\s)/)) && m[0].trim().split(/\s+/).length >= 6) {
+      T.buffer = T.buffer.slice(m[0].length);
+      T.shown += m[0];
+      $("bot").textContent = T.shown.trim();
+      enqueueSpeech(m[0]);
+    }
+    while ((m = T.buffer.match(/^[\s\S]*?[.!?](?=\s)/))) {
+      T.buffer = T.buffer.slice(m[0].length);
+      T.shown += m[0];
+      $("bot").textContent = T.shown.trim();
+      enqueueSpeech(m[0]);
+    }
+    if (final && T.buffer.trim()) {
+      T.shown += T.buffer;
+      $("bot").textContent = T.shown.trim();
+      enqueueSpeech(T.buffer);
+      T.buffer = "";
+    }
+  };
+  // one streamed reply from Ollama; onText(visibleSoFar, newPart) runs as words arrive ("thinking" text is hidden)
+  const aiStream = async (messages, onText) => {
+    const res = await fetch(CONFIG.ollamaUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: CONFIG.model, stream: true, options: AI_OPTIONS, keep_alive: -1, ...aiExtra(), messages })     // aiExtra may replace options
+    });
+    if (!res.ok) {
+      let detail = "";
+      try { detail = (await res.json()).error || ""; } catch (_) {}
+      throw new Error(res.status === 404
+        ? `Model "${CONFIG.model}" is not installed. Run: ollama pull ${CONFIG.model} (or fix model: in the settings)`
+        : `Ollama error ${res.status}: ${detail || "unknown"}`);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = "", full = "", visible = "", thinkState = null;     // thinkState: null = not sure yet, true = model is thinking, false = answering
+    const answerPart = end => {
+      const close = full.lastIndexOf("</think>");
+      if (close >= 0) { noteThinkOnly(); thinkState = false; return full.slice(close + 8); }
+      if (thinkState === null && (full.trim().length >= 24 || end)) thinkState = THINKY.test(full);
+      if (thinkState === true && end) {                 // finished without </think>: thinking (it talks about "the user"), or just an answer that began "Okay, so…"
+        if (/\b(the user|the visitor|user's)\b/i.test(full)) noteThinkOnly(); else thinkState = false;
+      }
+      return thinkState === false ? full : "";
+    };
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const msg = JSON.parse(line).message || {};
+        const piece = msg.content || "";
+        if (piece && !tFirst) tFirst = performance.now();
+        full += piece;
+        const vis = answerPart(false).replace(/<think>[\s\S]*?(<\/think>|$)/g, "").replace(/^\s+/, "");
+        if (!vis.startsWith(visible)) continue;           // never take back words that were already spoken
+        const add = vis.slice(visible.length); visible = vis;
+        if (add) onText(visible, add);
+      }
+    }
+    const vis = answerPart(true).replace(/<think>[\s\S]*?(<\/think>|$)/g, "").replace(/^\s+/, "");
+    if (vis.startsWith(visible) && vis.length > visible.length) { const add = vis.slice(visible.length); visible = vis; onText(visible, add); }
+    return visible;
+  };
+  const timed = () => { AI.firstMs = Math.round((tFirst || performance.now()) - t0); AI.totalMs = Math.round(performance.now() - t0); AI.at = Date.now(); };
+  const remember = reply => { history.push({ role: "user", content: text }, { role: "assistant", content: reply }); history = history.slice(-2 * AI.historyTurns); };
+  const messages = [{ role: "system", content: systemPrompt(text) }, ...history.slice(-2 * AI.historyTurns), { role: "user", content: text }];
+  let routeLine = "";
+  try {
+    let mode = "", sayStarted = false;          // mode: "" = not sure yet, "say" = an answer, "route" = GO/PERSON/SEARCH
+    const startSay = () => { if (!sayStarted) { sayStarted = true; closePanel(); $("you").textContent = quote; } };
+    const visible = await aiStream(messages, (vis, add) => {
+      if (!mode && (vis.length >= 9 || vis.includes("\n"))) mode = ROUTE.test(vis) ? "route" : "say";
+      if (mode === "say") { const first = !sayStarted; startSay(); T.buffer += first ? vis : add; flush(false); }
+    });
+    if (!mode) mode = ROUTE.test(visible) ? "route" : "say";
+    if (mode === "say" && !sayStarted) { startSay(); T.buffer = visible.trim() ? visible : documentAnswer(text); }
+    if (mode === "route") {
+      routeLine = visible.replace(/[*`"]/g, "").trim().split("\n")[0];
+      const m = routeLine.match(/^(GO|PERSON|SEARCH|DO)\s*:\s*(.+)$/i);
+      const kind = m ? m[1].toUpperCase() : "";
+      if (kind === "DO") {
+        timed();
+        if (tryActions(m[2], quote)) { remember("DO: " + m[2]); return; }
+        startSay();
+        T.buffer = "Sorry, I can't do that yet. I can set timers, countdowns and reminders, and switch the lights.";
+      } else if (kind === "SEARCH" && CONFIG.internet) {
+        // say something while we look it up, then let the AI answer from what the internet says
+        startSay();
+        const query = m[2].trim().slice(0, 150);
+        T.shown = "Let me look that up. "; $("bot").textContent = "Let me look that up…"; enqueueSpeech("Let me look that up.");
+        const results = await webSearch(query);
+        T.shown = "";
+        if (!results.length) T.buffer = "Sorry, I couldn't find that on the internet right now. Please ask one of our staff.";
+        else {
+          const found = results.slice(0, 4).map((r, i) => `[${i + 1}] ${r.title}\n${String(r.content || "").replace(/\s+/g, " ").slice(0, 700)}`).join("\n\n");
+          let ok = null;          // null = not sure yet; false = the AI tried to search again instead of answering
+          // same start as the first question, so Ollama doesn't have to read the instructions again
+          const ans = await aiStream([...messages, { role: "assistant", content: "SEARCH: " + query }, { role: "user", content:
+            `SEARCH RESULTS:\n${found}\n\nNow answer my question "${text}" in 1 to 3 short, natural spoken sentences, using only these results. ` +
+            `Say numbers and dates simply. If they don't answer it, say you couldn't find it. No lists, links, markdown or emojis.` }],
+            (vis, add) => {
+              if (ok === null) { if (vis.length < 9 && !vis.includes("\n")) return; ok = !ROUTE.test(vis); if (ok) T.buffer += vis; }
+              else if (ok) T.buffer += add;
+              if (ok) flush(false);
+            });
+          if (ok === null) { ok = !!ans.trim() && !ROUTE.test(ans); if (ok) T.buffer = ans; }      // a very short answer
+          if (!ok) T.buffer = "Sorry, I couldn't find a clear answer to that.";
+        }
+      } else {
+        const done = kind === "GO" || kind === "PERSON" ? aiRoute(kind, m[2]) : "";
+        if (done) { timed(); $("you").textContent = quote; remember(kind + ": " + done); return; }
+        startSay();
+        T.buffer = documentAnswer(text);             // the AI named something that doesn't exist: answer from the document
+      }
+    }
+    flush(true);
+    timed();
+  } catch (err) {
+    console.error(err);
+    setStatus(err instanceof TypeError
+      ? "Can't reach Ollama at localhost:11434. Is it running? Answering from the document instead."
+      : err.message + " Answering from the document instead.");
+    T.buffer = documentAnswer(text);
+    flush(true);
+  }
+  if (T.shown.trim()) lastSpoken = T.shown.trim();
+  remember(T.shown.trim() || routeLine);
+  streamDone = true;
+  if (!speakingNow && !speakQueue.length) finishTurn();
+}
+
+/* ---------------- Welcome screen and idle reset ---------------- */
+function welcome() {
+  stopTalking();
+  setState("idle");
+  closePanel();
+  history = [];
+  viewFloor = INFO.here ? INFO.here.floor : viewFloor;
+  $("you").textContent = "";
+  $("bot").textContent = `Hi, I'm ${CONFIG.botName}! Welcome to ${CONFIG.companyName}. How can I help you today?`;
+  $("typeBox").value = "";
+  lightsUnlocked = false;
+  WAKE.armedUntil = 0; WAKE.inUtterance = false;
+  resetDone = true;
+}
+function activity() { lastActivity = Date.now(); resetDone = false; }
+/* A GitHub update arrived while the kiosk was on (kiosk-server.py checks every few hours): reload the page
+   when nobody is using it, so the new version starts without anyone touching the PC. */
+const PAGE_VERSION = (window.KIOSK_VERSION || {}).page || 0;
+let updateWaiting = false;
+setInterval(async () => {
+  if (!PAGE_VERSION || SETUP || VOICES) return;
+  try {
+    const v = await (await fetch("/api/version", { cache: "no-store" })).json();
+    if (v.page && v.page !== PAGE_VERSION) updateWaiting = true;
+  } catch (e) { return; }
+  const quiet = state === "idle" && !document.body.classList.contains("has-panel") && Date.now() - lastActivity > 90e3
+    && !JOBS.some(j => j.at - Date.now() < 120e3);
+  if (updateWaiting && quiet) { storeFlush(); setTimeout(() => location.reload(), 500); }
+}, 60e3);
+setInterval(() => {
+  if (!SETUP && !VOICES && !resetDone && state === "idle" && Date.now() - lastActivity > CONFIG.resetAfterSec * 1000) welcome();
+}, 3000);
+function setStatus(t, key = "main") {                     // one note per part of the kiosk, shown together
+  if (t) statusNotes[key] = t; else delete statusNotes[key];
+  $("status").textContent = Object.values(statusNotes).join("  ·  ");
+}
+
+/* ---------------- Controls ---------------- */
+document.addEventListener("pointerdown", activity);
+$("stage").addEventListener("click", e => {
+  if (e.target.closest("button, input, form, .chips")) return;
+  if (state === "listening") { if (WAKE.on) wakeDisarm(); else recog && recog.stop(); return; }
+  closePanel();
+  startListening();
+});
+$("typeForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const text = $("typeBox").value.trim();
+  if (!text || state === "thinking") return;
+  stopTalking();
+  $("typeBox").value = "";
+  handleUserText(text);
+});
+$("pClose").addEventListener("click", () => { activity(); closePanel(); });
+$("btn3d").addEventListener("click", () => { activity(); setView("3d"); });
+$("btnWalk").addEventListener("click", () => { activity(); setView("walk"); });
+$("btn2d").addEventListener("click", () => { activity(); setView("2d"); });
+document.addEventListener("keydown", e => {
+  activity();
+  if (e.code === "Escape") { stopTalking(); recog && recog.abort(); wakeDisarm(); setState("idle"); closePanel(); }
+  if (e.code === "F9") { e.preventDefault(); toggleDiag(); }
+  if (e.code === "F8") { e.preventDefault(); openVoicePicker(); }
+});
+
+/* Map setup: open welcome-kiosk.html?setup, pick a level, click the map to get X | Y */
+function setupMode() {
+  document.body.classList.add("setup");
+  $("setupBox").hidden = false;
+  $("pClose").hidden = true;
+  openPanel({ mode: "map" });
+  $("pTitle").textContent = "Map setup";
+  $("pText").textContent = "Pick a level, then click a spot on the map to get its X | Y numbers.";
+  $("mapWrap").addEventListener("click", e => {
+    const r = $("mapWrap").getBoundingClientRect();
+    const x = Math.round(((e.clientX - r.left) / r.width) * 1000) / 10;
+    const y = Math.round(((e.clientY - r.top) / r.height) * 1000) / 10;
+    $("setupCoords").textContent = `level ${viewFloor} | ${x} | ${y}`;
+    drawPins();
+    const p = document.createElement("div");
+    p.className = "pin target";
+    p.style.left = x + "%";
+    p.style.top = y + "%";
+    p.innerHTML = '<div class="dot"></div>';
+    $("mapWrap").appendChild(p);
+  });
+}
+
+/* Voice tester: open welcome-kiosk.html?voices */
+function voiceTester() {
+  document.body.classList.add("setup", "has-panel");
+  $("pTitle").textContent = "Pick a voice";
+  $("pText").textContent = "Tap a voice to hear it. Copy part of its name into voiceHint in the settings, and try the pitch slider too. \"Online (Natural)\" voices only appear in Microsoft Edge with internet.";
+  $("pClose").hidden = true;
+  $("mapWrap").hidden = true;
+  $("floorTabs").hidden = true;
+  $("placeBox").hidden = true;
+  $("personCard").hidden = true;
+  const box = $("peopleList");
+  box.hidden = false;
+  box.style.gridTemplateColumns = "1fr";
+  const controls = document.createElement("div");
+  controls.className = "setup-box";
+  controls.innerHTML = 'Pitch: <b id="pv"></b> <input id="pitch" type="range" min="0.5" max="2" step="0.1" style="width:60%;vertical-align:middle">';
+  $("panel").insertBefore(controls, box);
+  const pitch = controls.querySelector("#pitch");
+  pitch.value = CONFIG.speechPitch;
+  const showPitch = () => { controls.querySelector("#pv").textContent = pitch.value; };
+  pitch.oninput = showPitch;
+  showPitch();
+  const render = () => {
+    const list = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en"))
+      .sort((a, b) => (/natural/i.test(b.name) - /natural/i.test(a.name)));
+    box.innerHTML = "";
+    if (!list.length) { box.textContent = "No English voices found yet. Wait a moment or refresh."; return; }
+    for (const v of list) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.innerHTML = '<div class="avatar">▶</div><div><div class="name"></div><div class="role"></div></div>';
+      b.querySelector(".name").textContent = v.name;
+      b.querySelector(".role").textContent = v.lang + (v.localService ? " · works offline" : " · needs internet");
+      b.onclick = () => {
+        speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(`Hi, I'm ${CONFIG.botName}! Welcome to ${CONFIG.companyName}. How can I help you today?`);
+        u.voice = v;
+        u.lang = v.lang;
+        u.pitch = parseFloat(pitch.value);
+        u.rate = CONFIG.speechRate;
+        speechSynthesis.speak(u);
+      };
+      box.appendChild(b);
+    }
+  };
+  render();
+  speechSynthesis.addEventListener("voiceschanged", render);
+}
+
+/* Check Ollama when the page opens and show what's wrong, if anything */
+/* Pick the smartest AI model that runs fast on this PC: tiers come from kiosk-manifest.json, the PC's memory and
+   graphics card from kiosk-server.py. A bigger model also gets a longer memory of the conversation. */
+const MODEL_TIERS_DEFAULT = [
+  { model: "qwen3:14b", minVramGB: 11, ctx: 8192, history: 8, predict: 220 },
+  { model: "qwen3:8b", minVramGB: 7, ctx: 8192, history: 8, predict: 220 },
+  { model: "qwen3:4b-instruct", minVramGB: 3.5, minRamGB: 7.5, ctx: 4096, history: 6, predict: 180 },
+  { model: "qwen3:4b-instruct-2507-q4_K_M", minVramGB: 3.5, minRamGB: 7.5, ctx: 4096, history: 6, predict: 180 },
+  { model: "qwen2.5:3b", minRamGB: 6, ctx: 4096, history: 4, predict: 160 },
+  { model: "qwen2.5:1.5b", minRamGB: 3.5, ctx: 4096, history: 4, predict: 160 },
+  { model: "qwen2.5:0.5b", ctx: 4096, history: 4, predict: 160 }
+];
+const HW = { ramGB: 0, vramGB: 0, gpus: [], cpu: "", tier: null, ideal: "", why: "" };
+const fits = t => (t.minVramGB && HW.vramGB >= t.minVramGB) || (t.minRamGB && HW.ramGB >= t.minRamGB) || (!t.minVramGB && !t.minRamGB);
+async function chooseModel(names) {
+  let tiers = MODEL_TIERS_DEFAULT;
+  try { const m = await (await fetch("kiosk-manifest.json", { cache: "no-store" })).json(); if (Array.isArray(m.models) && m.models.length) tiers = m.models; } catch (e) {}
+  try { Object.assign(HW, await (await fetch("/api/hardware", { cache: "no-store", signal: AbortSignal.timeout(10000) })).json()); } catch (e) {}
+  const has = n => names.includes(n.includes(":") ? n : n + ":latest");
+  const fitting = tiers.filter(fits);
+  HW.ideal = (fitting[0] || tiers[tiers.length - 1]).model;
+  if (CONFIG.model && CONFIG.model !== "auto") {             // a fixed model in the settings
+    HW.tier = tiers.find(t => t.model === CONFIG.model) || { model: CONFIG.model };
+    HW.why = "set in the settings";
+    return CONFIG.model;
+  }
+  const pick = fitting.find(t => has(t.model)) || tiers.find(t => has(t.model));
+  HW.tier = pick || null;
+  HW.why = pick ? (pick.model === HW.ideal ? "best for this PC" : `best installed (${HW.ideal} is better here and downloads automatically)`) : "";
+  return pick ? pick.model : HW.ideal;
+}
+async function checkOllama() {
+  if (!CONFIG.useAI || SETUP || VOICES) return;
+  const base = CONFIG.ollamaUrl.replace(/\/api\/chat$/, "");
+  try {
+    const res = await fetch(base + "/api/tags");
+    const names = ((await res.json()).models || []).map(m => m.name);
+    CONFIG.model = await chooseModel(names);
+    if (HW.tier) {                           // bigger models remember more of the conversation
+      AI_OPTIONS.num_ctx = HW.tier.ctx || AI_OPTIONS.num_ctx;
+      AI_OPTIONS.num_predict = HW.tier.predict || AI_OPTIONS.num_predict;
+      AI.historyTurns = HW.tier.history || 4;
+    }
+    const want = CONFIG.model.includes(":") ? CONFIG.model : CONFIG.model + ":latest";
+    if (!names.includes(want)) {
+      setStatus(names.length
+        ? `Model "${CONFIG.model}" not found. Installed: ${names.join(", ")}. Change model: in the settings.`
+        : `Ollama has no models yet. Run: ollama pull ${CONFIG.model}`);
+    } else {
+      setStatus("");
+      try {                                  // does this model "think" before answering? then switch that off
+        const info = await (await fetch(base + "/api/show", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: CONFIG.model }) })).json();
+        AI.thinking = (info.capabilities || []).includes("thinking");
+      } catch (e) {}
+      aiWarmup();
+    }
+  } catch (e) {
+    setStatus("Can't reach Ollama at localhost:11434. Start Ollama, or set useAI: false.");
+  }
+}
+/* Load the model and read the instructions once at start-up, so the first visitor gets a fast answer */
+async function aiWarmup() {
+  try {
+    const t0 = performance.now();
+    const r = await fetch(CONFIG.ollamaUrl, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: CONFIG.model, stream: false, keep_alive: -1, options: { ...AI_OPTIONS, num_predict: 24 }, ...aiExtra(),
+        messages: [{ role: "system", content: systemPrompt("") }, { role: "user", content: "Hello" }] })
+    });
+    try {                                     // a model that still thinks out loud with thinking switched off?
+      const m = (await r.json()).message || {};
+      if ((m.content || "").includes("</think>") || THINKY.test(m.content || "")) noteThinkOnly();
+    } catch (_) {}
+    AI.warm = true; AI.warmMs = Math.round(performance.now() - t0);
+  } catch (e) { console.warn("AI warm-up:", e); }
+}
+/* How much of the model sits on the graphics card (shown in the F9 overlay) */
+async function aiGpuCheck() {
+  if (!CONFIG.useAI || Date.now() - AI.gpuAt < 5000) return;
+  AI.gpuAt = Date.now();
+  try {
+    const m = ((await (await fetch(CONFIG.ollamaUrl.replace(/\/api\/chat$/, "") + "/api/ps")).json()).models || [])[0];
+    AI.gpu = !m ? "not loaded" : m.size_vram >= m.size * 0.98 ? "all on the graphics card" : m.size_vram > 0 ? Math.round(100 * m.size_vram / m.size) + "% on the graphics card" : "on the processor only (no graphics card)";
+  } catch (e) { AI.gpu = "can't reach Ollama"; }
+}
+
+/* ---------------- Start ---------------- */
+if (CONFIG.hideCursor) document.body.classList.add("no-cursor");
+buildBrand();
+tick();
+setInterval(tick, 10000);
+blink();
+lookAround();
+Promise.all([loadInfo(), storeLoad()]).then(() => {
+  Object.assign(tgStore, storeGet("telegram") || {});
+  pickVoice();
+  restoreJobs();
+  if (Q.has("telegram")) telegramSetup();
+  else if (VOICES) voiceTester();
+  else if (SETUP) setupMode();
+  else { welcome(); checkOllama(); tgPoll(); wakeInit(); seeInit(); if (Q.has("debug")) toggleDiag(); }
+});
+</script>
+</body>
+</html>

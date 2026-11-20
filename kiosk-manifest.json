@@ -1,0 +1,27 @@
+{
+  "version": "2026.11.20",
+  "notes": [
+    "Updates itself from GitHub every time it starts",
+    "Picks the smartest AI model this PC can run fast",
+    "Remembers what is on screen, so follow-up questions like 'how do I get there?' work"
+  ],
+  "files": [
+    "welcome-kiosk.html",
+    "building-3d.js",
+    "kiosk-server.py",
+    "cubot-update.py",
+    "kiosk-manifest.json",
+    "start-kiosk.bat",
+    "stop-kiosk.bat",
+    "vision/*"
+  ],
+  "models": [
+    { "model": "qwen3:14b", "minVramGB": 11, "ctx": 8192, "history": 8, "predict": 220 },
+    { "model": "qwen3:8b", "minVramGB": 7, "ctx": 8192, "history": 8, "predict": 220 },
+    { "model": "qwen3:4b-instruct", "minVramGB": 3.5, "minRamGB": 7.5, "ctx": 4096, "history": 6, "predict": 180 },
+    { "model": "qwen3:4b-instruct-2507-q4_K_M", "minVramGB": 3.5, "minRamGB": 7.5, "ctx": 4096, "history": 6, "predict": 180 },
+    { "model": "qwen2.5:3b", "minRamGB": 6, "ctx": 4096, "history": 4, "predict": 160 },
+    { "model": "qwen2.5:1.5b", "minRamGB": 3.5, "ctx": 4096, "history": 4, "predict": 160 },
+    { "model": "qwen2.5:0.5b", "ctx": 4096, "history": 4, "predict": 160 }
+  ]
+}

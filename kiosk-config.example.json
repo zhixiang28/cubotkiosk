@@ -1,0 +1,11 @@
+{
+  "_comment": "Copy this file to kiosk-config.json on the kiosk PC and keep only the lines you want to change. It is never overwritten by updates.",
+  "model": "auto",
+  "greetPeople": true,
+  "handsFree": false,
+  "lights": { "pin": "" },
+  "updateRepo": "zhixiang28/cubotkiosk",
+  "updateBranch": "main",
+  "updateEveryHours": 2,
+  "autoUpdate": true
+}
