@@ -358,6 +358,17 @@ body.has-panel .panel { transform: translateX(0); }
 #parcelBox { display: flex; flex-direction: column; gap: 14px; }
 #parcelBox[hidden] { display: none; }
 .pc-text { font-size: clamp(16px, 1.5vw, 20px); font-weight: 700; }
+/* internet answer card */
+#webBox { display: flex; flex-direction: column; gap: 14px; }
+#webBox[hidden] { display: none; }
+.wb-img { width: 100%; max-height: 32vh; object-fit: contain; border-radius: 18px; background: var(--bg); }
+.wb-img[hidden] { display: none; }
+.wb-answer { font-size: clamp(18px, 1.8vw, 24px); font-weight: 700; line-height: 1.4; }
+.wb-answer.wait { opacity: 0.6; }
+.wb-src { border-top: 2px solid var(--line); padding-top: 10px; }
+.wb-src b { display: block; font-size: clamp(15px, 1.4vw, 18px); }
+.wb-src p { font-size: clamp(14px, 1.25vw, 17px); line-height: 1.45; opacity: 0.85; margin-top: 4px; }
+.wb-src span { display: block; font-size: 12px; opacity: 0.6; margin-top: 4px; }
 .pc-media { position: relative; border-radius: 16px; overflow: hidden; background: #000; max-height: 46vh; }
 .pc-media video, .pc-media img { display: block; width: 100%; max-height: 46vh; object-fit: contain; }
 .pc-frame { position: absolute; inset: 12% 10%; border: 3px dashed rgba(255,255,255,0.8); border-radius: 14px; pointer-events: none; }
@@ -532,6 +543,11 @@ body.setup .map-wrap { cursor: crosshair; }
   <div class="map-wrap" id="mapWrap"></div>
   <div id="placeBox"><div class="list-title" id="placeTitle">Tap a place to see where it is</div><div class="place-list" id="placeList"></div></div>
   <div class="people-list" id="peopleList" hidden></div>
+  <div id="webBox" hidden>
+    <img class="wb-img" id="wbImg" alt="" hidden>
+    <div class="wb-answer" id="wbAnswer"></div>
+    <div id="wbSources"></div>
+  </div>
   <div id="faceBox" hidden>
     <p class="pc-text" id="fcText"></p>
     <div class="chips pc-btns" id="fcBtns"></div>
@@ -1069,7 +1085,7 @@ function renderPeopleInto(box, list, onPick) {
 /* ---------------- Panel ---------------- */
 function openPanel({ mode, loc = null, person = null, people = null, title = null }) {
   const isPeople = mode === "people";
-  stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true; $("faceBox").hidden = true;
+  stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true; $("faceBox").hidden = true; $("webBox").hidden = true;
   FACE.ask = null;
   guideOffer = null; onScreenPerson = null; $("personActions").hidden = true; $("personActions").innerHTML = "";
   panelTarget = loc ? { ...loc, person } : null;
@@ -1187,6 +1203,7 @@ function closePanel() {
   $("lightsBox").hidden = true;
   $("voiceBox").hidden = true;
   $("faceBox").hidden = true;
+  $("webBox").hidden = true;
   FACE.ask = null;
   stop3D();
   stopRouteTour();
@@ -3736,7 +3753,8 @@ Work out what the visitor really needs, even if they ask in a roundabout way, th
    For example: "DO: remind me in 15 minutes to call John", "DO: turn off the wall light in 10 minutes", "DO: countdown 30 seconds",
    "DO: timer at 5:34 pm", "DO: cancel the timer", "DO: how long is left on the timer". TIMERS RUNNING lists what is set now.
 ${CONFIG.internet ? `4. They ask about the world outside this office: news, weather, traffic, sports, prices, exchange rates, public
-   holidays, other companies or places, the time in another country, or a general question you can't answer for sure.
+   holidays, other companies or places, the time in another country, science, nature, space, history, how something works,
+   what a word, phrase or saying means, or any general question you can't answer for sure. The answer is also shown on screen.
    Reply with exactly one line: SEARCH: <short web search query>
    Never search for things about ${CONFIG.companyName}, this office or its people: use FACTS for those.
 ` : ""}${CONFIG.internet ? 5 : 4}. Anything else: answer in 1 to 3 short, ${cheeky() ? "playful, cheeky" : "warm"} sentences, using FACTS and NOW. If they don't cover it, say you're
@@ -3771,7 +3789,9 @@ function examples() {
   if (money) ex.push(`"Who do I talk to about getting paid?" -> PERSON: ${money.name}`);
   ex.push(`"Can you switch off the lights once I leave in ten minutes?" -> DO: turn off the lights in 10 minutes`);
   ex.push(`"Give me a shout in half an hour to call my boss" -> DO: remind me in 30 minutes to call my boss`);
-  if (CONFIG.internet) ex.push(`"Will I need an umbrella later?" -> SEARCH: Singapore weather today`);
+  if (CONFIG.internet) ex.push(`"Will I need an umbrella later?" -> SEARCH: Singapore weather today`,
+    `"Why is the sky blue?" -> SEARCH: why is the sky blue`, `"What does serendipity mean?" -> SEARCH: serendipity meaning`,
+    `"What's a black hole?" -> SEARCH: black hole`);
   ex.push(`"What does this company do?" -> (a short friendly answer from FACTS)`);
   return "EXAMPLES:\n" + ex.map(e => "- " + e).join("\n") + "\n";
 }
@@ -3804,9 +3824,36 @@ async function webSearch(query) {
     const r = await fetch("/api/search?q=" + encodeURIComponent(query), { signal: AbortSignal.timeout(15000) });
     if (r.status === 404 || r.status === 501) { NET.error = "old web server: run Cubot-Update.bat"; setStatus("Internet search needs the new kiosk server. Run Cubot-Update.bat.", "net"); return []; }
     const d = await r.json();
-    Object.assign(NET, { source: d.source || "", at: Date.now(), query, ms: d.ms || 0, error: (d.errors || []).join("; ") });
+    Object.assign(NET, { source: d.source || "", at: Date.now(), query, ms: d.ms || 0, error: (d.errors || []).join("; "), image: d.image || "" });
     return d.results || [];
   } catch (e) { NET.error = String(e.message || e); return []; }
+}
+
+/* What the internet said, on screen: a picture (from Wikipedia), Cubot's answer, and the sources it came from */
+function webShow(question, results) {
+  showOnly("webBox", question.length > 70 ? question.slice(0, 67) + "…" : question);
+  document.body.classList.remove("compact");
+  const img = $("wbImg"), src = NET.image || (results.find(r => r.image) || {}).image || "";
+  img.hidden = !src;
+  img.onerror = () => { img.hidden = true; };
+  if (src) img.src = src;
+  $("wbAnswer").textContent = "Looking it up…";
+  $("wbAnswer").classList.add("wait");
+  const box = $("wbSources"); box.innerHTML = "";
+  for (const r of results.filter(r => r.content).slice(0, 3)) {
+    const d = document.createElement("div"); d.className = "wb-src";
+    const b = document.createElement("b"); b.textContent = r.title || "";
+    const t = document.createElement("p"); const c = String(r.content).replace(/\s+/g, " ").trim();
+    t.textContent = c.length > 260 ? c.slice(0, 257).replace(/\s+\S*$/, "") + "…" : c;
+    const u = document.createElement("span");
+    try { u.textContent = new URL(r.url).hostname.replace(/^www\./, ""); } catch (e) { u.textContent = ""; }
+    d.append(b, t, u); box.appendChild(d);
+  }
+}
+function webAnswer(text) {
+  if ($("webBox").hidden) return;
+  $("wbAnswer").textContent = text || "I couldn't find a clear answer to that.";
+  $("wbAnswer").classList.remove("wait");
 }
 
 /* The AI picked a place or a person: show the route like a normal search */
@@ -4000,7 +4047,7 @@ async function handleUserText(text) {
   const timed = () => { AI.firstMs = Math.round((tFirst || performance.now()) - t0); AI.totalMs = Math.round(performance.now() - t0); AI.at = Date.now(); };
   const remember = reply => { history.push({ role: "user", content: text }, { role: "assistant", content: reply }); history = history.slice(-2 * AI.historyTurns); };
   const messages = [{ role: "system", content: systemPrompt(text) }, ...history.slice(-2 * AI.historyTurns), { role: "user", content: text }];
-  let routeLine = "";
+  let routeLine = "", webTurn = false;
   try {
     let mode = "", sayStarted = false;          // mode: "" = not sure yet, "say" = an answer, "route" = GO/PERSON/SEARCH
     const startSay = () => { if (!sayStarted) { sayStarted = true; closePanel(); $("you").textContent = quote; } };
@@ -4028,6 +4075,8 @@ async function handleUserText(text) {
         const results = await webSearch(query);
         if (myTurn !== turnSeq) return;
         T.shown = "";
+        webTurn = true;
+        if (results.length) webShow(text, results);
         if (!results.length) T.buffer = "Sorry, I couldn't find that on the internet right now. Please ask one of our staff.";
         else {
           const found = results.slice(0, 4).map((r, i) => `[${i + 1}] ${r.title}\n${String(r.content || "").replace(/\s+/g, " ").slice(0, 700)}`).join("\n\n");
@@ -4052,6 +4101,7 @@ async function handleUserText(text) {
       }
     }
     flush(true);
+    if (webTurn) webAnswer(T.shown.trim());
     timed();
   } catch (err) {
     if (myTurn !== turnSeq) return;

@@ -6,7 +6,9 @@ on the internet:
 
   /api/search?q=...   web search. Uses Ollama web search when an API key is set in office-info.txt
                       ([INTERNET] section, "ollama api key | ..."), otherwise Wikipedia.
-                      Weather questions also get a live forecast from Open-Meteo (free, no key).
+                      Weather questions also get a live forecast from Open-Meteo (free, no key), and
+                      "meaning of ..." questions a dictionary entry (dictionaryapi.dev, then Wiktionary; free, no key).
+                      Results can carry an "image" (a Wikipedia picture) for the answer card on screen.
   /api/status         which search the kiosk is using (shown on the F9 screen)
   /api/settings       the kiosk's saved settings (voice, timers, scheduled lights, Telegram sign-ups) in kiosk-settings.json
   /api/hardware       this PC's memory and graphics card, so Cubot can pick the best AI model for it
@@ -28,6 +30,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -186,14 +189,64 @@ def ollama_search(q, key):
             for r in d.get("results", [])]
 
 
-def wikipedia_search(q):
+def wikipedia_search(q, n=3):
     url = "https://en.wikipedia.org/w/api.php?" + urllib.parse.urlencode({
-        "action": "query", "generator": "search", "gsrsearch": q, "gsrlimit": 3, "prop": "extracts|info",
-        "exintro": 1, "explaintext": 1, "exsentences": 6, "inprop": "url", "format": "json", "formatversion": 2})
-    pages = (get_json(url).get("query") or {}).get("pages") or []
+        "action": "query", "generator": "search", "gsrsearch": q, "gsrlimit": n, "prop": "extracts|info|pageimages",
+        "exintro": 1, "explaintext": 1, "exsentences": 6, "inprop": "url", "piprop": "thumbnail", "pithumbsize": 640,
+        "format": "json", "formatversion": 2})
+    pages = (get_json(url, timeout=8).get("query") or {}).get("pages") or []
     pages.sort(key=lambda p: p.get("index", 99))
-    return [{"title": p.get("title", ""), "url": p.get("fullurl", ""), "content": p.get("extract", "")}
+    return [{"title": p.get("title", ""), "url": p.get("fullurl", ""), "content": p.get("extract", ""),
+             "image": (p.get("thumbnail") or {}).get("source", "")}
             for p in pages if p.get("extract")]
+
+
+Q_ = r"[\"'“‘]?"
+EQ_ = r"[\"'”’]?"
+MEANING = re.compile(
+    r"^\s*(?:what(?:'s| is)\s+)?(?:the\s+)?(?:meaning|definition)\s+of\s+(?:the\s+)?(?:word\s+|phrase\s+|term\s+|idiom\s+)?" + Q_ + r"(.+?)" + EQ_ + r"\s*\??$"
+    r"|^\s*define\s+(?:the\s+)?(?:word\s+|phrase\s+|term\s+)?" + Q_ + r"(.+?)" + EQ_ + r"\s*\??$"
+    r"|^\s*(?:what\s+(?:does|do|is)\s+)?(?:the\s+)?(?:word\s+|phrase\s+|term\s+|idiom\s+)?" + Q_ + r"(.+?)" + EQ_ + r"\s+(?:meaning|means?|definition|defined)\b", re.I)
+
+
+def meaning_term(q):
+    """'serendipity meaning', 'meaning of break a leg', 'define ubiquitous' -> the word or phrase, else ''"""
+    m = MEANING.search(q)
+    term = next((g for g in (m.groups() if m else ()) if g), "")
+    term = re.sub(r"^(?:the|a|an)\s+", "", term.strip(" ?.!\"'"), flags=re.I)
+    return term if 0 < len(term) <= 60 and len(term.split()) <= 6 else ""
+
+
+def strip_html(t):
+    return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", t or "")).strip()
+
+
+def dictionary(term):
+    """A short dictionary entry: dictionaryapi.dev for words, Wiktionary for phrases and idioms."""
+    lines, url = [], ""
+    try:
+        d = get_json("https://api.dictionaryapi.dev/api/v2/entries/en/" + urllib.parse.quote(term.lower()), timeout=6)
+        for e in d[:1] if isinstance(d, list) else []:
+            for mg in e.get("meanings", [])[:3]:
+                defs = mg.get("definitions", [])[:2]
+                for df in defs:
+                    ex = f' Example: "{df["example"]}"' if df.get("example") else ""
+                    lines.append(f'({mg.get("partOfSpeech", "")}) {df.get("definition", "")}{ex}')
+            url = (e.get("sourceUrls") or [""])[0]
+    except Exception:  # noqa: BLE001
+        pass
+    if not lines:
+        d = get_json("https://en.wiktionary.org/api/rest_v1/page/definition/" + urllib.parse.quote(term.replace(" ", "_")), timeout=6)
+        for mg in (d.get("en") or [])[:3]:
+            for df in mg.get("definitions", [])[:2]:
+                t = strip_html(df.get("definition"))
+                if t:
+                    ex = strip_html((df.get("examples") or [""])[0])
+                    lines.append(f'({mg.get("partOfSpeech", "").lower()}) {t}' + (f' Example: "{ex}"' if ex else ""))
+        url = "https://en.wiktionary.org/wiki/" + urllib.parse.quote(term.replace(" ", "_"))
+    if not lines:
+        return None
+    return {"title": f"Dictionary: {term}", "url": url, "content": " ".join(lines)[:1500], "kind": "dictionary"}
 
 
 def weather(q, cfg):
@@ -224,27 +277,36 @@ def weather(q, cfg):
 
 
 def search(q):
+    """Ask every source that fits at the same time (so the slowest one sets the wait, not all of them added up)."""
     cfg = settings()
-    results, used, errors = [], "", []
-    if WEATHER_WORDS.search(q):
-        try:
-            results.append(weather(q, cfg))
-            used = "open-meteo"
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"weather: {e}")
-    if cfg["key"]:
-        try:
-            results += ollama_search(q, cfg["key"])
-            used = used + "+ollama" if used else "ollama"
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"ollama: {e}")
-    if len(results) < 2 and not (used and "ollama" in used):
-        try:
-            results += wikipedia_search(q)
-            used = used + "+wikipedia" if used else "wikipedia"
-        except Exception as e:  # noqa: BLE001
-            errors.append(f"wikipedia: {e}")
-    return {"query": q, "results": results[:5], "source": used, "errors": errors}
+    jobs = {}
+    term = meaning_term(q)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        if WEATHER_WORDS.search(q) and not term:
+            jobs["open-meteo"] = pool.submit(weather, q, cfg)
+        if term:
+            jobs["dictionary"] = pool.submit(dictionary, term)
+        if cfg["key"]:
+            jobs["ollama"] = pool.submit(ollama_search, q, cfg["key"])
+        # Wikipedia always: it gives the picture for the answer card, and the answer when there's no Ollama key
+        jobs["wikipedia"] = pool.submit(wikipedia_search, term or q, 2 if cfg["key"] else 3)
+        got, used, errors = {}, [], []
+        for name, job in jobs.items():
+            try:
+                r = job.result(timeout=15)
+                if r:
+                    got[name] = r if isinstance(r, list) else [r]
+                    used.append(name)
+            except Exception as e:  # noqa: BLE001
+                errors.append(f"{name}: {e}")
+    results = got.get("open-meteo", []) + got.get("dictionary", []) + got.get("ollama", [])
+    wiki = got.get("wikipedia", [])
+    if len(results) < 2 or not got.get("ollama"):
+        results += wiki
+    image = next((r["image"] for r in wiki if r.get("image")), "")
+    if image and not any(r.get("image") for r in results):
+        results.append({"title": wiki[0]["title"], "url": wiki[0]["url"], "content": "", "image": image})
+    return {"query": q, "results": results[:6], "image": image, "source": "+".join(used), "errors": errors}
 
 
 class Handler(SimpleHTTPRequestHandler):
