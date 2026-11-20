@@ -7,5 +7,6 @@
   "updateRepo": "zhixiang28/cubotkiosk",
   "updateBranch": "main",
   "updateEveryHours": 2,
+  "updateWaitSeconds": 45,
   "autoUpdate": true
 }

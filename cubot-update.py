@@ -8,24 +8,30 @@ and kiosk-server.py runs it again every few hours while the kiosk is on.
   * Your own files are never touched: office-info.txt, kiosk-config.json, kiosk-settings.json, python-path.txt.
   * The old files are kept in the "backups" folder (last 5 updates), so an update can be undone by copying them back.
   * No internet, or GitHub is down? Cubot simply starts with the version it already has.
+  * If Python cannot reach GitHub (school/office network, certificates, proxy), it tries again with Windows' own
+    curl.exe and PowerShell, and it waits up to "updateWaitSeconds" (default 45) for Wi-Fi when the PC has just started.
 
 Settings (optional) in kiosk-config.json:
   "updateRepo":   "zhixiang28/cubotkiosk"   which GitHub repo to follow
   "updateBranch": "main"
   "autoUpdate":   false                     to switch updates off
   "githubToken":  "..."                     only needed if the repo is private (a read-only token)
+  "updateWaitSeconds": 45                   how long to wait for the internet when Cubot opens (0 = don't wait)
 
 Run by hand:  python cubot-update.py           (check and install)
               python cubot-update.py --check   (only say whether there is an update)
+              update-cubot.bat                 (double-click: gets the newest updater first, then updates)
 Exit codes:   0 nothing to do / updated / offline     10 updated and start-kiosk.bat must restart
 """
 import fnmatch
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 import zipfile
@@ -37,7 +43,8 @@ LOG_FILE = os.path.join(HERE, "update-log.txt")
 # never written by an update, even if someone lists them in the manifest
 PROTECTED = {"office-info.txt", "kiosk-config.json", "kiosk-settings.json", "python-path.txt", ".cubot-version",
              "update-log.txt"}
-UA = "CubotKiosk-Updater/1.0"
+UA = "CubotKiosk-Updater/1.1"
+NO_WINDOW = 0x08000000 if os.name == "nt" else 0                # run curl/PowerShell without a console window
 
 
 def log(msg):
@@ -64,14 +71,88 @@ def local_config():
         return {}
 
 
+def _urllib(url, headers, timeout):
+    with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=timeout) as r:
+        return r.read()
+
+
+def _curl(url, headers, timeout):
+    """Windows 10/11 has curl.exe built in. It uses the Windows certificate store, so it often works where Python's
+    own HTTPS fails (school/office networks that check the traffic)."""
+    exe = shutil.which("curl.exe") or shutil.which("curl")
+    if not exe:
+        raise OSError("curl is not installed")
+    out = tempfile.NamedTemporaryFile(delete=False, dir=HERE, prefix=".dl-", suffix=".tmp")
+    out.close()
+    try:
+        base = [exe, "-fsSL", "--max-time", str(int(timeout)), "-o", out.name]
+        for k, v in headers.items():
+            base += ["-H", f"{k}: {v}"]
+        tries = [base + ["--ssl-revoke-best-effort", url], base + [url]] if os.name == "nt" else [base + [url]]
+        for cmd in tries:
+            r = subprocess.run(cmd, capture_output=True, timeout=timeout + 20, creationflags=NO_WINDOW)
+            if r.returncode == 0:
+                with open(out.name, "rb") as f:
+                    return f.read()
+            if r.returncode != 2:                                    # 2 = this curl is too old for that option
+                break
+        raise OSError(f"curl error {r.returncode}: {r.stderr.decode(errors='replace').strip()[:200]}")
+    finally:
+        try:
+            os.remove(out.name)
+        except OSError:
+            pass
+
+
+def _powershell(url, headers, timeout):
+    """Last try: PowerShell uses the Windows proxy settings and certificates."""
+    exe = shutil.which("powershell") or shutil.which("pwsh")
+    if not exe:
+        raise OSError("PowerShell is not available")
+    out = tempfile.NamedTemporaryFile(delete=False, dir=HERE, prefix=".dl-", suffix=".tmp")
+    out.close()
+    script = ("$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue';"
+              "try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {};"
+              "try { [Net.WebRequest]::DefaultWebProxy.Credentials = [Net.CredentialCache]::DefaultNetworkCredentials } catch {};"
+              "$h = @{}; if ($env:CUBOT_AUTH) { $h['Authorization'] = $env:CUBOT_AUTH };"
+              "Invoke-WebRequest -UseBasicParsing -Uri $env:CUBOT_URL -Headers $h -UserAgent $env:CUBOT_UA"
+              " -TimeoutSec ([int]$env:CUBOT_TIMEOUT) -OutFile $env:CUBOT_OUT")
+    env = dict(os.environ, CUBOT_URL=url, CUBOT_OUT=out.name, CUBOT_UA=headers.get("User-Agent", UA),
+               CUBOT_AUTH=headers.get("Authorization", ""), CUBOT_TIMEOUT=str(int(timeout)))
+    try:
+        r = subprocess.run([exe, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", script],
+                           capture_output=True, timeout=timeout + 40, env=env, creationflags=NO_WINDOW)
+        if r.returncode != 0:
+            msg = (r.stderr or r.stdout).decode(errors="replace").strip().splitlines()
+            raise OSError("PowerShell: " + (msg[0][:200] if msg else f"error {r.returncode}"))
+        with open(out.name, "rb") as f:
+            return f.read()
+    finally:
+        try:
+            os.remove(out.name)
+        except OSError:
+            pass
+
+
 def http(url, token="", accept=None, timeout=15):
+    """Download a URL. Tries Python first, then curl.exe, then PowerShell; raises only if all of them fail."""
     h = {"User-Agent": UA}
     if accept:
         h["Accept"] = accept
     if token:
         h["Authorization"] = "Bearer " + token
-    with urllib.request.urlopen(urllib.request.Request(url, headers=h), timeout=timeout) as r:
-        return r.read()
+    if url.startswith("http://127.0.0.1"):                          # local (Ollama, kiosk server): Python only
+        return _urllib(url, h, timeout)
+    errors = []
+    for name, fn in (("Python", _urllib), ("curl", _curl), ("PowerShell", _powershell)):
+        try:
+            data = fn(url, h, timeout)
+            if name != "Python":
+                log(f"(Python could not reach GitHub, so {name} was used instead)")
+            return data
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"{name}: {e.__class__.__name__}: {e}"[:300])
+    raise OSError(" | ".join(errors))
 
 
 def current_version():
@@ -83,15 +164,36 @@ def current_version():
 
 
 def latest_sha(repo, branch, token):
-    return http(f"https://api.github.com/repos/{repo}/commits/{branch}", token,
-                accept="application/vnd.github.sha", timeout=8).decode().strip()
+    """The newest commit on the branch. Asks the GitHub API first; if that fails (blocked, or its limit of 60
+    checks an hour is used up), reads it straight from GitHub's git server, which has no such limit."""
+    try:
+        data = http(f"https://api.github.com/repos/{repo}/commits/{branch}", token, timeout=10).decode().strip()
+        sha = json.loads(data)["sha"] if data.startswith("{") else data
+        if re.fullmatch(r"[0-9a-f]{40}", sha):
+            return sha
+        raise ValueError(f"unexpected answer from GitHub: {data[:80]!r}")
+    except Exception as e:  # noqa: BLE001
+        if token:
+            raise
+        first = e
+    try:
+        refs = http(f"https://github.com/{repo}.git/info/refs?service=git-upload-pack", timeout=15).decode(errors="replace")
+    except Exception as e:  # noqa: BLE001
+        raise OSError(f"{first} || {e}") from None
+    m = re.search(r"([0-9a-f]{40}) refs/heads/" + re.escape(branch) + r"\b", refs)
+    if not m:
+        raise OSError(f"{first} || branch {branch!r} was not found on GitHub")
+    return m.group(1)
 
 
 def download(repo, sha, token):
     if token:   # private repo: the API zip link works with a token
         data = http(f"https://api.github.com/repos/{repo}/zipball/{sha}", token, timeout=120)
     else:
-        data = http(f"https://codeload.github.com/{repo}/zip/{sha}", timeout=120)
+        try:
+            data = http(f"https://codeload.github.com/{repo}/zip/{sha}", timeout=180)
+        except Exception:  # noqa: BLE001
+            data = http(f"https://github.com/{repo}/archive/{sha}.zip", timeout=180)
     z = zipfile.ZipFile(io.BytesIO(data))
     root = z.namelist()[0].split("/")[0] + "/"                       # GitHub puts everything in one folder
     return z, root
@@ -190,12 +292,20 @@ def pull_models(manifest):
         exe = find_ollama()
         if exe:
             log(f"Downloading the AI model {name} for this PC in the background (Cubot uses it once it is ready)")
-            flags = 0x08000000 if os.name == "nt" else 0               # no console window
-            subprocess.Popen([exe, "pull", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=flags)
+            subprocess.Popen([exe, "pull", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             creationflags=NO_WINDOW)
         return
 
 
-def run(check_only=False):
+def looks_offline(err):
+    """True when the PC is not on the internet yet (Wi-Fi still connecting after start-up)."""
+    t = str(err).lower()
+    return any(w in t for w in ("getaddrinfo", "name or service", "nodename", "resolve host", "could not resolve",
+                                "network is unreachable", "no such host", "remote name could not be resolved",
+                                "unable to connect", "connection refused", "actively refused", "10051", "10065"))
+
+
+def run(check_only=False, wait=0):
     cfg = local_config()
     if cfg.get("autoUpdate") is False:
         return 0
@@ -203,11 +313,18 @@ def run(check_only=False):
     branch = cfg.get("updateBranch") or "main"
     token = cfg.get("githubToken") or ""
     cur = current_version()
-    try:
-        sha = latest_sha(repo, branch, token)
-    except Exception as e:  # noqa: BLE001
-        log(f"Could not check for updates ({e.__class__.__name__}: {e}). Starting the current version.")
-        return 0
+    give_up = time.time() + max(0, wait)
+    while True:
+        try:
+            sha = latest_sha(repo, branch, token)
+            break
+        except Exception as e:  # noqa: BLE001
+            if looks_offline(e) and time.time() + 10 < give_up:
+                print("No internet yet, trying again in 10 seconds...", flush=True)
+                time.sleep(10)
+                continue
+            log(f"Could not check for updates ({e.__class__.__name__}: {e}). Starting the current version.")
+            return 0
     if sha == cur.get("sha"):
         print("Cubot is up to date.", flush=True)
         try:
@@ -241,4 +358,10 @@ def run(check_only=False):
 
 
 if __name__ == "__main__":
-    sys.exit(run("--check" in sys.argv))
+    try:
+        _wait = float(local_config().get("updateWaitSeconds", 45))
+    except (TypeError, ValueError):
+        _wait = 45
+    if "--now" in sys.argv or "--check" in sys.argv:
+        _wait = 0
+    sys.exit(run("--check" in sys.argv, wait=_wait))

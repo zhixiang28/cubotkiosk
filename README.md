@@ -13,6 +13,15 @@ finder, parcels (Telegram), Makerspace lights, timers, internet search and a loc
 
 No internet or GitHub down? Cubot starts with the version it already has.
 
+If Python can't reach GitHub (school/office network, certificates, proxy), the updater tries again with Windows'
+own `curl.exe` and then PowerShell. When Cubot opens right after the PC starts, it waits up to 45 seconds for Wi-Fi
+(`updateWaitSeconds` in `kiosk-config.json`).
+
+**Update by hand:** double-click `update-cubot.bat` in the Cubot folder. It downloads the newest updater first, so
+it also fixes a kiosk whose updater is too old to work, then installs the update, shows the log and offers to
+restart Cubot. If the kiosk doesn't have this file yet, download it once from GitHub (open the file, then
+*Download raw file*) into the Cubot folder.
+
 ## What stays on the kiosk PC only (never in this repo)
 
 | File | What it holds |
@@ -31,6 +40,7 @@ No internet or GitHub down? Cubot starts with the version it already has.
 | `building-3d.js` | Floor plans for routes and the 3D walk-through |
 | `kiosk-server.py` | Local web server on 127.0.0.1:8000: serves the page, internet search, saved settings, PC hardware, update checks |
 | `cubot-update.py` | Downloads and installs a new version from GitHub, and the best AI model for the PC |
+| `update-cubot.bat` | Double-click to update Cubot now (gets the newest updater first, then offers a restart) |
 | `kiosk-manifest.json` | Version, which files an update installs, and the AI model tiers |
 | `start-kiosk.bat` / `stop-kiosk.bat` | Open / close the kiosk on Windows |
 | `map-L1.svg` … `map-L6.svg` | 2D floor maps |

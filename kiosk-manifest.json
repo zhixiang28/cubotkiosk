@@ -1,6 +1,7 @@
 {
-  "version": "2026.11.20.5",
+  "version": "2026.11.20.6",
   "notes": [
+    "Updater: falls back to Windows curl/PowerShell when Python can't reach GitHub, waits for Wi-Fi at start, new update-cubot.bat",
     "Say 'Hey Cubot' while she is talking to stop her and ask something new",
     "Makerspace = Team T office: 'right here', directions, and the handshake reacts out loud",
     "Makerspace data: find tools and stock with a mini map, tools out, light timer, live card, 5pm summary"
@@ -16,6 +17,7 @@
     "kiosk-manifest.json",
     "start-kiosk.bat",
     "stop-kiosk.bat",
+    "update-cubot.bat",
     "vision/*",
     "ocr/*"
   ],
