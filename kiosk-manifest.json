@@ -1,9 +1,9 @@
 {
-  "version": "2026.11.20.3",
+  "version": "2026.11.20.4",
   "notes": [
+    "Makerspace = Team T office: 'right here', directions, and the handshake reacts out loud",
     "Makerspace data: find tools and stock with a mini map, tools out, light timer, live card, 5pm summary",
-    "Handshake duel mode and invites",
-    "Linked to the Makerspace handshake: reactions, live grip meter challenge, today's handshake stats"
+    "Handshake duel mode and invites"
   ],
   "files": [
     "welcome-kiosk.html",

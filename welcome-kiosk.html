@@ -631,17 +631,21 @@ const CONFIG = {
     enabled: true,
     device: "handshake-1",
     place: "Makerspace",
-    nearby: false,                  // true if the handshake stands right next to Cubot (then she always reacts out loud)
+    nearby: true,                   // the handshake is in the Makerspace = the Team T office, the same room as Cubot,
+                                    // so she reacts out loud. false if it ever moves away from her
     react: "auto",                  // "auto" = comment out loud only when someone is at the kiosk, "always", or "off"
     button: true,                   // a "Handshake challenge" button on the welcome screen
     playOnChallenge: null           // sound number the handshake plays when a challenge starts (e.g. 1), null = none
+  },
+  extraAliases: {                   // more words for places in office-info.txt (added to its own list)
+    "Team T office": ["makerspace", "maker space", "makers space", "the makerspace"]
   },
   makerspace: {                     // tool scale, storage map, stock and light timer from Supabase
     enabled: true,
     summaryAt: "17:00",             // weekday end-of-day reminder: tools still out + handshake of the day ("" = off)
     liveCard: true,                 // "Makerspace live" card on the welcome screen when nobody is around
     toolNotes: true,                // a note on screen when a tool is taken out or put back
-    roomPlaces: {}                  // storage room -> office place for "show me the way", e.g. { "MAKER SPACE": "Team T office" }
+    roomPlaces: { "MAKER SPACE": "Team T office" }   // storage room -> office place, for "show me the way"
   },
   lights: {                         // office lights (the ESP32 smart switch). Works only on the office network
     url: "https://ogxuwchojexznsxvvdhi.supabase.co",
@@ -731,6 +735,10 @@ function parseInfo(text) {
     };
   });
 
+  for (const [name, words] of Object.entries(CONFIG.extraAliases || {})) {
+    const loc = locations.find(l => l.name.toLowerCase() === name.toLowerCase());
+    if (loc) loc.aliases.push(...words.map(w => w.toLowerCase()).filter(w => !loc.aliases.includes(w)));
+  }
   if (hereName) {
     const spot = locations.find(l => l.name.toLowerCase() === hereName.toLowerCase());
     if (spot) here = { floor: spot.floor, x: spot.x, y: spot.y, name: spot.name };
@@ -1155,6 +1163,12 @@ function closePanel() {
 
 function goToPlace(loc) {
   activity();
+  if (INFO.here && INFO.here.name && norm(loc.name) === norm(INFO.here.name)) {      // asking for the room the kiosk is in
+    const also = (CONFIG.extraAliases || {})[loc.name] && /maker\s?space/i.test((CONFIG.extraAliases[loc.name] || []).join(" ")) ? " This is also our Makerspace." : "";
+    closePanel(); mood("happy", 2000);
+    say(`You're already here! This is ${theName(loc)}.${also}`);
+    return;
+  }
   openPanel({ mode: "map", loc });
   $("you").textContent = "";
   const lvl = loc.floor !== INFO.here.floor ? ` on ${floorOf(loc.floor).name}` : "";
@@ -3303,7 +3317,7 @@ function msWhere(unitId, level, slot) {
     lvl = u.parent_level;
     u = u.parent_id ? MS.units.get(u.parent_id) : null;
   }
-  if (room) parts.push(`in the ${prettyRoom(room.name)}`);
+  if (room) parts.push(`${msRoomIsHere(room) ? "right here " : ""}in the ${prettyRoom(room.name)}`);
   return parts.join(", ");
 }
 /* match a request to a tool, a stock item or a storage unit: every important word of the name must be said */
@@ -3331,7 +3345,7 @@ function msFind(text) {
 function msAnswer(m) {
   if (m.kind === "unit") {
     const u = m.item, room = MS.rooms.get(u.room_id);
-    const where = u.parent_id ? msWhere(u.parent_id, u.parent_level) : `in the ${prettyRoom(room && room.name)}`;
+    const where = u.parent_id ? msWhere(u.parent_id, u.parent_level) : `${msRoomIsHere(room) ? "right here " : ""}in the ${prettyRoom(room && room.name)}`;
     return { text: `The ${u.name} is ${where}.`, unit: u };
   }
   const it = m.item, where = it.unit_id ? msWhere(it.unit_id, it.level, it.slot) : it.location || "";
@@ -3367,10 +3381,15 @@ function msShowCard(title, text, unit) {
   $("msMap").innerHTML = svg;
   const placeName = top && (msConf().roomPlaces[(MS.rooms.get(top.room_id) || {}).name] || "");
   const place = placeName && INFO.locations.find(l => norm(l.name) === norm(placeName));
-  $("msWay").hidden = !place;
+  $("msWay").hidden = !place || norm(place.name) === norm(INFO.here.name || "");
   $("msWay").onclick = () => { card.hidden = true; if (place) goToPlace(place); };
   card.hidden = false;
   clearTimeout(msShowCard.t); msShowCard.t = setTimeout(() => { card.hidden = true; }, 40e3);
+}
+/* the storage room this kiosk stands in (the Makerspace is the Team T office) */
+function msRoomIsHere(room) {
+  const place = room && msConf().roomPlaces[room.name];
+  return !!(place && INFO.here && INFO.here.name && norm(place) === norm(INFO.here.name));
 }
 function msToolsOut() { return MS.tools.filter(t => t.status === "out"); }
 const LIGHT_SIDE = { left: 1, right: 2 };
