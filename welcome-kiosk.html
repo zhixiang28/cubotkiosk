@@ -403,6 +403,7 @@ body.compact #personCard { display: none !important; }
 .place-list .chip { flex: none; }
 .place-list .chip { font-size: 16px; padding: 10px 18px; }
 .place-list .chip.on { border-color: var(--pin); }
+#personActions { justify-content: flex-start; margin: 4px 0 12px; }
 .people-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
 .people-list button {
   display: flex;
@@ -514,6 +515,7 @@ body.setup .map-wrap { cursor: crosshair; }
     <div class="avatar" id="pAvatar"></div>
     <div><div class="name" id="pName"></div><div class="role" id="pRole"></div></div>
   </div>
+  <div class="chips" id="personActions" hidden></div>
   <div class="view-toggle" id="viewToggle" hidden>
     <button type="button" id="btnWalk">Walk-through</button>
     <button type="button" id="btn3d">3D overview</button>
@@ -679,6 +681,7 @@ let resetDone = true;
 let speakQueue = [];
 let streamDone = true;
 let INFO = { chunks: [], floors: [], locations: [], people: [], here: null, kioskDirs: {} };
+let guideOffer = null, onScreenPerson = null, peopleGuide = false;   // see introducePerson()
 let viewFloor = null;
 let panelTarget = null;
 const statusNotes = {};
@@ -1021,7 +1024,7 @@ function buildLists() {
   renderPeople(INFO.people);
   buildChips();
 }
-function renderPeople(list) { renderPeopleInto($("peopleList"), list, goToPerson); }
+function renderPeople(list) { renderPeopleInto($("peopleList"), list, p => (peopleGuide ? goToPerson : introducePerson)(p)); }
 function renderPeopleInto(box, list, onPick) {
   box.innerHTML = "";
   for (const p of list) {
@@ -1040,13 +1043,14 @@ function renderPeopleInto(box, list, onPick) {
 function openPanel({ mode, loc = null, person = null, people = null, title = null }) {
   const isPeople = mode === "people";
   stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true;
+  guideOffer = null; onScreenPerson = null; $("personActions").hidden = true; $("personActions").innerHTML = "";
   panelTarget = loc ? { ...loc, person } : null;
   stopRouteTour();
   panelRoute = null;
   document.body.classList.toggle("compact", !!loc);
   if (loc && window.BUILDING && !SETUP) { try { panelRoute = planRoute(loc); } catch (e) { console.warn(e); } }
   $("pTitle").textContent = title || (isPeople ? "Find a person" : person ? `Finding ${person.name}${person.role ? " · " + person.role : ""}` : loc ? loc.name : "Office map");
-  $("pText").textContent = isPeople ? "Tap a name to see where they sit."
+  $("pText").textContent = isPeople ? "Tap a name to find out who they are."
     : loc ? fullDirections(loc) + (person ? " If you have an appointment, please let us know who you're here to see." : "")
     : person ? "Please ask a staff member to help you reach them."
     : "Pick a level, then tap a place.";
@@ -1160,6 +1164,7 @@ function closePanel() {
   $("view3d").hidden = true;
   document.body.classList.remove("has-panel", "mode-3d", "compact");
   panelTarget = null;
+  guideOffer = null; onScreenPerson = null;
 }
 
 function goToPlace(loc) {
@@ -1175,8 +1180,51 @@ function goToPlace(loc) {
   const lvl = loc.floor !== INFO.here.floor ? ` on ${floorOf(loc.floor).name}` : "";
   say(`Here's ${theName(loc)}. ${fullDirections(loc)}`, `Here's ${theName(loc)}${lvl}. Follow the route on the right.`);
 }
+/* Asking about a person: introduce them first. The route is only shown when the visitor asks for the way
+   ("take me to...", "how do I get to...", "show me the way"), or says yes to "Would you like me to show you the way?" */
+const GUIDE_WORDS = /\b(take me|bring me|guide me|lead me|walk me|show me (the way|where|how)|the way|way to|directions?|route|how (do|can|should) i (get|go|reach|find)|how to (get|go|reach|find)|go to|get to|go there|get there|navigate)\b/i;
+const YES_GUIDE = /^\s*(yes|yeah|yea|yep|yup|ya|sure|ok|okay|alright|please|of course|go ahead|let'?s go|show me|lead the way|why not)\b(?!.*\b(not|don'?t|no)\b)/i;
+const NO_GUIDE = /^\s*(no|nope|nah|not now|not yet|maybe later|later|it'?s (ok|okay|fine|alright)|i'?m (ok|okay|fine|good)|no need)\b/i;
+const wantsGuide = text => GUIDE_WORDS.test(text || "");
+function personAbout(p) {
+  // a sentence about the person from office-info.txt (other than the PEOPLE table), if there is one
+  const full = norm(p.name);
+  if (tokens(p.name).length < 2) return "";
+  for (const c of INFO.chunks) {
+    if (!norm(c.text).includes(full)) continue;
+    const s = c.text.split(/(?<=[.!?])\s+/).find(x => norm(x).includes(full));
+    if (s && s.length <= 240) return s.trim();
+  }
+  return "";
+}
+function introducePerson(p) {
+  activity();
+  const loc = placeOf(p);
+  openPanel({ mode: "map", person: p, title: p.name + (p.role ? " · " + p.role : "") });
+  onScreenPerson = p;
+  const lvl = loc ? floorOf(loc.floor).name : "";
+  const about = personAbout(p);
+  const intro = p.role ? `${p.name} is our ${p.role}.` : `${p.name} works with us.`;
+  const where = loc ? (INFO.here && norm(loc.name) === norm(INFO.here.name) ? ` They're based right here in ${theName(loc)}.`
+    : ` They sit in ${theName(loc)}${loc.floor !== INFO.here.floor ? " on " + lvl : ""}.`) : "";
+  const offer = loc && !(INFO.here && norm(loc.name) === norm(INFO.here.name)) ? " Would you like me to show you the way?" : "";
+  const text = intro + (about && !norm(about).includes(norm(intro)) ? " " + about : "") + where + offer;
+  $("pText").textContent = text.trim();
+  if (offer) {
+    guideOffer = { person: p, until: Date.now() + 120e3 };
+    const box = $("personActions");
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip primary"; b.textContent = "Show me the way";
+    b.addEventListener("click", () => { activity(); goToPerson(p); });
+    box.appendChild(b);
+    box.hidden = false;
+  }
+  $("you").textContent = "";
+  say(text.trim());
+}
 function goToPerson(p) {
   activity();
+  onScreenPerson = null;
   const loc = placeOf(p);
   openPanel({ mode: "map", loc, person: p });
   $("you").textContent = "";
@@ -2578,7 +2626,7 @@ function buildChips() {
     box.appendChild(b);
   };
   if (INFO.locations.length) add("Find a room", ICON.pin, () => { activity(); $("you").textContent = ""; viewFloor = INFO.here.floor; openPanel({ mode: "map" }); say("Here's our office map. Pick a level, then tap a place."); }, true);
-  if (INFO.people.length) add("Find a person", ICON.person, () => { activity(); $("you").textContent = ""; openPanel({ mode: "people" }); say("Who are you looking for? Tap their name, or type it below."); }, true);
+  if (INFO.people.length) add("Find a person", ICON.person, () => { activity(); $("you").textContent = ""; peopleGuide = false; openPanel({ mode: "people" }); say("Who are you looking for? Tap their name, or type it below."); }, true);
   add("I have a delivery", ICON.box, () => { activity(); $("you").textContent = ""; openParcel(); }, true);
   if (lightsReady() && CONFIG.lights.button) add("Lights", ICON.bulb, () => { activity(); $("you").textContent = ""; openLights(); });
   if (CONFIG.handshake && CONFIG.handshake.enabled !== false && CONFIG.handshake.button) add("Handshake challenge", ICON.hand, () => { activity(); $("you").textContent = ""; hsChallenge(); });
@@ -3559,6 +3607,10 @@ function examples() {
 }
 /* what the visitor is looking at, so "how do I get there?" or "who sits there?" make sense */
 function screenText() {
+  if (!panelTarget && onScreenPerson) {
+    const l = placeOf(onScreenPerson);
+    return `an introduction to ${onScreenPerson.name}${onScreenPerson.role ? " (" + onScreenPerson.role + ")" : ""}${l ? `, who sits in ${l.name}` : ""}. "They", "him", "her" mean this person. If the visitor wants to go to them, reply PERSON: ${onScreenPerson.name}`;
+  }
   if (!panelTarget) return "nothing";
   const t = panelTarget;
   return `directions to ${t.name}${t.floor != null ? ` (${floorOf(t.floor).name})` : ""}${t.person ? `, where ${t.person.name}${t.person.role ? " (" + t.person.role + ")" : ""} sits` : ""}. "There" or "it" means this place.`;
@@ -3588,7 +3640,7 @@ async function webSearch(query) {
 }
 
 /* The AI picked a place or a person: show the route like a normal search */
-function aiRoute(kind, name) {
+function aiRoute(kind, name, asked = "") {
   name = name.replace(/\s*\((level|lvl|l)\s*\d+\)\s*$/i, "").replace(/[.\s]+$/, "").trim();
   const low = name.toLowerCase();
   if (/^go$/i.test(kind)) {
@@ -3597,7 +3649,7 @@ function aiRoute(kind, name) {
   } else {
     const exact = INFO.people.find(p => p.name.toLowerCase() === low);
     const hits = exact ? [exact] : findPeople(name);
-    if (hits.length === 1) { goToPerson(hits[0]); return hits[0].name; }
+    if (hits.length === 1) { (wantsGuide(asked) ? goToPerson : introducePerson)(hits[0]); return hits[0].name; }
   }
   return "";
 }
@@ -3645,6 +3697,19 @@ async function handleUserText(text) {
     return;
   }
 
+  // Just introduced someone and asked "Would you like me to show you the way?"
+  if (guideOffer && Date.now() < guideOffer.until) {
+    const p = guideOffer.person, others = findPeople(text).filter(x => x !== p), place = findLocation(text);
+    const short = text.trim().split(/\s+/).length <= 6;
+    if (NO_GUIDE.test(text) && short) {
+      guideOffer = null; $("personActions").hidden = true;
+      say("No problem! Just ask if you need anything else."); $("you").textContent = quote; return;
+    }
+    if (!others.length && !(place && place.loc !== placeOf(p)) && ((YES_GUIDE.test(text) && short) || wantsGuide(text))) {
+      goToPerson(p); $("you").textContent = quote; return;
+    }
+  }
+
   // Things Cubot can do: timers, countdowns, reminders, lights now or later, quick maths, "say that again"
   if (tryActions(text, quote)) return;
   if (/^\s*(please\s+)?(stop|stop talking|stop it|shut up|be quiet|quiet|shush|shh+|enough|that's enough|ok|okay|thanks|thank you|never ?mind|cancel|nothing)( please| thanks| thank you)?[.!]*\s*$/i.test(text)) {
@@ -3656,8 +3721,9 @@ async function handleUserText(text) {
   const wantsPlace = locHit && (WANTS_DIRECTIONS.test(text) || text.trim().split(/\s+/).length <= 4);
   if (wantsPlace && locHit.multiWord) { goToPlace(locHit.loc); $("you").textContent = quote; return; }
   const people = findPeople(text);
-  if (people.length === 1) { goToPerson(people[0]); $("you").textContent = quote; return; }
+  if (people.length === 1) { (wantsGuide(text) ? goToPerson : introducePerson)(people[0]); $("you").textContent = quote; return; }
   if (people.length > 1) {
+    peopleGuide = wantsGuide(text);
     openPanel({ mode: "people", people, title: "Who do you mean?" });
     say(`I found ${people.length} people. Tap the one you're looking for.`);
     return;
@@ -3665,7 +3731,8 @@ async function handleUserText(text) {
   if (wantsPlace) { goToPlace(locHit.loc); $("you").textContent = quote; return; }
   if (/\b(map|floor plan|layout)\b/i.test(text)) { openPanel({ mode: "map" }); say("Here's our office map. Pick a level, then tap a place."); return; }
   if (/\b(who works|staff list|directory|team members|find someone|looking for someone)\b/i.test(text)) {
-    openPanel({ mode: "people" }); say("Here's our team. Tap a name to see where they sit."); return;
+    peopleGuide = false;
+    openPanel({ mode: "people" }); say("Here's our team. Tap a name to find out who they are."); return;
   }
 
   // 2. Everything else: answer from the document (with or without the AI).
@@ -3797,7 +3864,7 @@ async function handleUserText(text) {
           if (!ok) T.buffer = "Sorry, I couldn't find a clear answer to that.";
         }
       } else {
-        const done = kind === "GO" || kind === "PERSON" ? aiRoute(kind, m[2]) : "";
+        const done = kind === "GO" || kind === "PERSON" ? aiRoute(kind, m[2], text) : "";
         if (done) { timed(); $("you").textContent = quote; remember(kind + ": " + done); return; }
         startSay();
         T.buffer = documentAnswer(text);             // the AI named something that doesn't exist: answer from the document
