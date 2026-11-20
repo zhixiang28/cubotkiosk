@@ -74,6 +74,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--listen); ou
 .brand { display: flex; align-items: center; gap: 14px; font-weight: 800; font-size: clamp(20px, 2vw, 28px); }
 .brand img { height: clamp(32px, 5vh, 54px); width: auto; }
 .clock { text-align: right; line-height: 1.15; }
+.char-switch { pointer-events: auto; display: flex; gap: 4px; padding: 4px; margin-right: 18px; border-radius: 999px;
+  background: var(--card-2); border: 2px solid var(--line); }
+.char-switch button { border: 0; background: transparent; color: var(--card-text); border-radius: 999px; padding: 6px 14px;
+  font-weight: 700; font-size: clamp(13px, 1.2vw, 16px); opacity: 0.7; white-space: nowrap; }
+.char-switch button[aria-pressed="true"] { background: var(--speak); color: var(--bg); opacity: 1; }
+@media (max-width: 900px) { .char-switch button .cs-word { display: none; } }
 .timers { flex: 1; min-width: 0; display: flex; flex-wrap: nowrap; justify-content: center; gap: 8px; padding: 0 16px; overflow: hidden; }
 .timers.many .tm-label { display: none; }
 .tm { display: inline-flex; align-items: center; gap: 10px; background: var(--card-2); color: var(--card-text); border: 2px solid var(--line); border-radius: 999px; padding: 6px 8px 6px 14px; font-size: clamp(14px, 1.4vw, 18px); font-weight: 700; }
@@ -420,6 +426,11 @@ body.compact #personCard { display: none !important; }
 .people-list .role { font-size: 14px; opacity: 0.75; }
 [hidden] { display: none !important; }
 
+/* Mischievous character: a sly half-closed eye and a crooked smirk (moods still take over when they play) */
+body.char-mischievous:not([class*="mood-"]) .eye:first-child { transform: scaleY(0.55) translateY(12%); border-radius: 30% 30% 999px 999px; }
+body.char-mischievous:not([class*="mood-"]) .mouth { transform: rotate(-9deg) translateX(18%); width: min(7vw, 10vh); }
+.eye.wink { transform: scaleY(0.07) !important; transition: transform 0.12s ease !important; }
+
 /* face moods (handshake reactions) */
 body.mood-happy .eye { height: min(6vw, 9vh); border-radius: 999px 999px 20% 20%; transform: translateY(2vh); }
 body.mood-ouch .eye { height: min(1.6vw, 2.6vh); border-radius: 6px; }
@@ -483,6 +494,10 @@ body.setup .map-wrap { cursor: crosshair; }
 <header class="top">
   <div class="brand" id="brand"></div>
   <div class="timers" id="timers"></div>
+  <div class="char-switch" id="charSwitch" role="group" aria-label="Cubot's character" hidden>
+    <button type="button" data-char="friendly" aria-pressed="true">😊 <span class="cs-word">Friendly</span></button>
+    <button type="button" data-char="mischievous" aria-pressed="false">😈 <span class="cs-word">Mischievous</span></button>
+  </div>
   <div class="clock"><div class="time" id="time"></div><div class="date" id="date"></div></div>
 </header>
 
@@ -597,6 +612,8 @@ const CONFIG = {
 
   botName: "Cubot",
   companyName: "SPACElogic",
+  character: "friendly",            // how Cubot talks: "friendly" or "mischievous" (cheeky, teasing, sly jokes)
+  characterSwitch: true,            // show the Friendly / Mischievous switch at the top of the screen
   quickQuestions: [                 // extra buttons. label = button text, ask = question sent
     { label: "About us", ask: "Tell me about SPACElogic" },
     { label: "Opening hours", ask: "What are your opening hours?" }
@@ -1172,13 +1189,14 @@ function goToPlace(loc) {
   if (INFO.here && INFO.here.name && norm(loc.name) === norm(INFO.here.name)) {      // asking for the room the kiosk is in
     const also = (CONFIG.extraAliases || {})[loc.name] && /maker\s?space/i.test((CONFIG.extraAliases[loc.name] || []).join(" ")) ? " This is also our Makerspace." : "";
     closePanel(); mood("happy", 2000);
-    say(`You're already here! This is ${theName(loc)}.${also}`);
+    say(`You're already here! This is ${theName(loc)}.${also}${quip("here", 0.8)}`);
     return;
   }
   openPanel({ mode: "map", loc });
   $("you").textContent = "";
   const lvl = loc.floor !== INFO.here.floor ? ` on ${floorOf(loc.floor).name}` : "";
-  say(`Here's ${theName(loc)}. ${fullDirections(loc)}`, `Here's ${theName(loc)}${lvl}. Follow the route on the right.`);
+  const q = quip("route", 0.6);
+  say(`Here's ${theName(loc)}. ${fullDirections(loc)}${q}`, `Here's ${theName(loc)}${lvl}. Follow the route on the right.${q}`);
 }
 /* Asking about a person: introduce them first. The route is only shown when the visitor asks for the way
    ("take me to...", "how do I get to...", "show me the way"), or says yes to "Would you like me to show you the way?" */
@@ -1208,7 +1226,8 @@ function introducePerson(p) {
   const where = loc ? (INFO.here && norm(loc.name) === norm(INFO.here.name) ? ` They're based right here in ${theName(loc)}.`
     : ` They sit in ${theName(loc)}${loc.floor !== INFO.here.floor ? " on " + lvl : ""}.`) : "";
   const offer = loc && !(INFO.here && norm(loc.name) === norm(INFO.here.name)) ? " Would you like me to show you the way?" : "";
-  const text = intro + (about && !norm(about).includes(norm(intro)) ? " " + about : "") + where + offer;
+  const text = intro + (about && !norm(about).includes(norm(intro)) ? " " + about : "") + quip("intro", 0.7) + where + offer;
+  wink();
   $("pText").textContent = text.trim();
   if (offer) {
     guideOffer = { person: p, until: Date.now() + 120e3 };
@@ -1230,10 +1249,11 @@ function goToPerson(p) {
   $("you").textContent = "";
   const who = p.role ? `${p.name}, our ${p.role},` : p.name;
   const lvl = loc && loc.floor !== INFO.here.floor ? ` on ${floorOf(loc.floor).name}` : "";
+  const q = quip("person", 0.6);
   say(loc
-    ? `${who} sits in ${theName(loc)}. ${fullDirections(loc)}`
+    ? `${who} sits in ${theName(loc)}. ${fullDirections(loc)}${q}`
     : `${who} works with us, but I'm not sure where they sit. Please ask a staff member to help you.`,
-    loc ? `${p.name} sits in ${theName(loc)}${lvl}. Follow the route on the right.` : undefined);
+    loc ? `${p.name} sits in ${theName(loc)}${lvl}. Follow the route on the right.${q}` : undefined);
 }
 
 
@@ -1873,7 +1893,7 @@ async function sendParcel(p) {
    this page (through kiosk-server.py), so they survive closing the kiosk, a restart, or switching browser.
    The browser's own storage is kept as a backup. */
 const STORE = { data: {}, server: false, timer: 0 };
-const LS_KEYS = { voice: "cubot-voice", telegram: "cubot-telegram", jobs: "cubot-jobs" };
+const LS_KEYS = { voice: "cubot-voice", telegram: "cubot-telegram", jobs: "cubot-jobs", character: "cubot-character" };
 async function storeLoad() {
   for (const [k, ls] of Object.entries(LS_KEYS)) {           // backup copy first
     try { const v = localStorage.getItem(ls); if (v) STORE.data[k] = JSON.parse(v); } catch (e) {}
@@ -2505,6 +2525,15 @@ function seeResults(res) {
 function seeGreet() {
   const h = new Date().getHours(), hello = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   const name = CONFIG.botName;
+  if (cheeky()) {
+    wink();
+    const how = WAKE.on ? `Say, Hey ${name}, and ask me anything.` : "Tap a button or type a question.";
+    say(pick([`${hello}! I'm ${name}. I saw you coming, you know. Welcome to ${CONFIG.companyName}! ${how}`,
+              `Psst! ${hello}! I'm ${name}, the smartest robot in ${CONFIG.companyName}. Don't tell the humans. ${how}`,
+              `${hello}! Welcome to ${CONFIG.companyName}. I'm ${name}, and I know everything around here. Well, almost. ${how}`]),
+        WAKE.on ? `${hello}! Say “Hey ${name}” to ask me anything.` : `${hello}! How can I help you today?`);
+    return;
+  }
   if (WAKE.on) say(`${hello}! I'm ${name}. Welcome to ${CONFIG.companyName}! If you have a question, just say, Hey ${name}, and ask me.`,
                    `${hello}! Say “Hey ${name}” to ask me a question.`);
   else say(`${hello}! I'm ${name}. Welcome to ${CONFIG.companyName}! Tap a button or type a question to get started.`,
@@ -2739,8 +2768,8 @@ function speakNext(g) {
   const u = new SpeechSynthesisUtterance(text);
   nowSpeaking = text;
   if (v) { u.voice = v; u.lang = v.lang; } else u.lang = CONFIG.speechLang;
-  u.rate = voiceRate;
-  u.pitch = voicePitch;
+  u.rate = Math.min(2, voiceRate * (cheeky() ? 1.06 : 1));
+  u.pitch = Math.min(2, voicePitch + (cheeky() ? 0.1 : 0));
   let started = false, finished = false, watchdog = 0;
   const done = retryLocal => {
     if (finished) return;
@@ -2767,6 +2796,56 @@ function finishTurn() {
   if (CONFIG.handsFree) setTimeout(startListening, 400);
 }
 let lastSpoken = "";
+/* ---------------- Character: how Cubot talks ----------------
+   "friendly" (default) or "mischievous". Changed with the switch at the top of the screen, or by saying
+   "be mischievous" / "be cheeky" / "be nice". The choice is saved in kiosk-settings.json. */
+const CHARS = { friendly: "Friendly", mischievous: "Mischievous" };
+function character() {
+  const c = storeGet("character") || CONFIG.character;
+  return CHARS[c] ? c : "friendly";
+}
+const cheeky = () => character() === "mischievous";
+const QUIPS = {
+  route: ["Try not to get lost. I'll know.", "Off you go! I'll be timing you.", "Don't take any secret detours now.",
+          "If you get lost, just pretend it was on purpose.", "Go on, I promise the route isn't a trick. Probably."],
+  person: ["Tell them Cubot sent you. They'll be thrilled. Or worried.", "Don't tell them I said this, but they love surprise visitors.",
+           "Act natural. I've told them nothing. Yet."],
+  intro: ["Between you and me, I've got a few stories about them.", "Lovely person. Terrible at hide and seek.",
+          "They're one of my favourites. Don't tell the others.", "I know all their secrets. Well, most of them."],
+  no: ["Suit yourself! I'll just be here, plotting.", "Fine, keep your secrets! Ask me anything else.", "No? Okay, but I'll remember this. Ask away if you need me."],
+  stop: ["Fine, fine, I'll zip it!", "Okay, okay! My lips are sealed. Mostly.", "Silence mode. For now."],
+  time: ["Time flies when you're chatting with me.", "Not that you're in a hurry to leave me, right?", "Plenty of time for mischief."],
+  here: ["Did you walk in without noticing? Sneaky!", "You've been here the whole time. I was wondering when you'd notice."]
+};
+function quip(kind, chance = 1) { return cheeky() && QUIPS[kind] && Math.random() < chance ? " " + pick(QUIPS[kind]) : ""; }
+function wink() {
+  if (!cheeky()) return;
+  const e = document.querySelector(".eye:last-child");
+  if (!e) return;
+  setTimeout(() => { e.classList.add("wink"); setTimeout(() => e.classList.remove("wink"), 380); }, 500);
+}
+function applyCharacter() {
+  document.body.classList.toggle("char-mischievous", cheeky());
+  const box = $("charSwitch");
+  box.hidden = CONFIG.characterSwitch === false || SETUP;
+  box.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.char === character())));
+}
+function setCharacter(c, quiet) {
+  if (!CHARS[c]) return;
+  storeSet("character", c);
+  applyCharacter();
+  if (quiet) return;
+  closePanel();
+  if (c === "mischievous") { mood("happy", 1800); wink(); say(pick(["Ooh, mischief mode! This is going to be fun.", "Mischievous me, reporting for duty. Hee hee.", "Uh oh. Now I'm cheeky. You asked for it!"])); }
+  else { mood("happy", 1800); say(pick(["Okay, I'll be on my best behaviour now.", "Friendly mode. Nice and polite, I promise.", "Back to sweet and helpful!"])); }
+}
+document.getElementById("charSwitch").addEventListener("click", e => {
+  const b = e.target.closest("button[data-char]");
+  if (!b) return;
+  activity();
+  if (b.dataset.char !== character()) setCharacter(b.dataset.char);
+});
+
 function say(text, shown) {
   stopTalking();
   countTalk = false;
@@ -3556,7 +3635,13 @@ function systemPrompt(question) {
   if (!facts.length) facts = all.slice(0, 2);
   const places = INFO.locations.map(l => `${l.name} (Level ${l.floor})${l.aliases.length ? ": " + l.aliases.slice(0, 8).join(", ") : ""}`);
   const people = INFO.people.map(p => p.name + (p.role ? " - " + p.role : ""));
-  return `You are ${CONFIG.botName}, the friendly welcome robot at the ${CONFIG.companyName} office. You speak out loud to visitors.
+  const style = cheeky()
+    ? `You are ${CONFIG.botName}, the mischievous, cheeky welcome robot at the ${CONFIG.companyName} office. You speak out loud to visitors.
+Your character: playful and a little naughty. You tease gently, make sly jokes and puns, act like you know secrets, and
+sometimes add a cheeky "hee hee" or "psst". Always give the real, correct answer first, then the mischief. Never rude,
+mean, insulting or sarcastic about the visitor, never about anyone's looks, and never make things up to be funny.`
+    : `You are ${CONFIG.botName}, the friendly welcome robot at the ${CONFIG.companyName} office. You speak out loud to visitors.`;
+  return `${style}
 Work out what the visitor really needs, even if they ask in a roundabout way, then reply in ONE of these ways:
 1. They want to go somewhere, ask where something is, or need something a place has (a drink, a toilet, somewhere to wait,
    a meeting room, parking, deliveries...). Reply with exactly one line: GO: <place name copied exactly from PLACES>
@@ -3570,7 +3655,7 @@ ${CONFIG.internet ? `4. They ask about the world outside this office: news, weat
    holidays, other companies or places, the time in another country, or a general question you can't answer for sure.
    Reply with exactly one line: SEARCH: <short web search query>
    Never search for things about ${CONFIG.companyName}, this office or its people: use FACTS for those.
-` : ""}${CONFIG.internet ? 5 : 4}. Anything else: answer in 1 to 3 short, warm sentences, using FACTS and NOW. If they don't cover it, say you're
+` : ""}${CONFIG.internet ? 5 : 4}. Anything else: answer in 1 to 3 short, ${cheeky() ? "playful, cheeky" : "warm"} sentences, using FACTS and NOW. If they don't cover it, say you're
    not sure and suggest asking a staff member. Never make things up. No lists, no markdown, no emojis.
 Follow-up questions ("how do I get there?", "who sits there?", "and the toilet?") refer to ON SCREEN and the conversation so far.
 ${examples()}
@@ -3665,9 +3750,17 @@ async function handleUserText(text) {
     openVoicePicker(); $("you").textContent = quote; return;
   }
 
+  // "Be mischievous" / "be cheeky" / "be nice": change how Cubot talks
+  const charAsk = text.match(/^\s*(?:please\s+|can you\s+|could you\s+|now\s+|ok\s+|okay\s+)*(?:be|become|act|turn|go|switch to|change to|switch on|turn on)\s+(?:more\s+|a bit\s+|a little\s+|so\s+)?(mischievous|cheeky|naughty|playful|nice|friendly|polite|normal|good)(?:\s+(?:mode|now|please|again))*\s*[.!]?\s*$|^\s*(?:switch to\s+|change to\s+|turn on\s+)?(mischievous|cheeky|naughty|friendly|nice|polite|normal) mode\s*[.!]?\s*$/i);
+  if (charAsk) {
+    const w = (charAsk[1] || charAsk[2]).toLowerCase();
+    setCharacter(/mischievous|cheeky|naughty|playful|funny/.test(w) ? "mischievous" : "friendly");
+    $("you").textContent = quote; return;
+  }
+
   // "What time is it?" (asking about another country goes to the AI, which can look it up)
   if (TIME_ASK.test(text) && !/\b(in|at)\s+(?!singapore\b|here\b|the office\b)[a-z]/i.test(text.replace(TIME_ASK, ""))) {
-    closePanel(); say(timeAnswer(text)); $("you").textContent = quote; return;
+    closePanel(); say(timeAnswer(text) + quip("time", 0.5)); $("you").textContent = quote; return;
   }
 
   // 0. "Where am I?"
@@ -3703,7 +3796,7 @@ async function handleUserText(text) {
     const short = text.trim().split(/\s+/).length <= 6;
     if (NO_GUIDE.test(text) && short) {
       guideOffer = null; $("personActions").hidden = true;
-      say("No problem! Just ask if you need anything else."); $("you").textContent = quote; return;
+      say(cheeky() ? pick(QUIPS.no) : "No problem! Just ask if you need anything else."); $("you").textContent = quote; return;
     }
     if (!others.length && !(place && place.loc !== placeOf(p)) && ((YES_GUIDE.test(text) && short) || wantsGuide(text))) {
       goToPerson(p); $("you").textContent = quote; return;
@@ -3713,7 +3806,7 @@ async function handleUserText(text) {
   // Things Cubot can do: timers, countdowns, reminders, lights now or later, quick maths, "say that again"
   if (tryActions(text, quote)) return;
   if (/^\s*(please\s+)?(stop|stop talking|stop it|shut up|be quiet|quiet|shush|shh+|enough|that's enough|ok|okay|thanks|thank you|never ?mind|cancel|nothing)( please| thanks| thank you)?[.!]*\s*$/i.test(text)) {
-    stopTalking(); closePanel(); $("bot").textContent = "OK!"; setState("idle"); mood("happy", 1500); return;
+    stopTalking(); closePanel(); $("bot").textContent = cheeky() ? pick(QUIPS.stop) : "OK!"; setState("idle"); mood("happy", 1500); wink(); return;
   }
 
   // 1. Places and people come straight from the document and are shown on the map.
@@ -4120,6 +4213,7 @@ lookAround();
 Promise.all([loadInfo(), storeLoad()]).then(() => {
   Object.assign(tgStore, storeGet("telegram") || {});
   pickVoice();
+  applyCharacter();
   restoreJobs();
   if (Q.has("telegram")) telegramSetup();
   else if (VOICES) voiceTester();

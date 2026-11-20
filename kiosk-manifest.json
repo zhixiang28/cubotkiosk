@@ -1,6 +1,7 @@
 {
-  "version": "2026.11.20.7",
+  "version": "2026.11.20.8",
   "notes": [
+    "Character switch at the top: Friendly or Mischievous (cheeky talk, sly face). Or say 'be cheeky' / 'be nice'",
     "Asking for a person: Cubot introduces them first and only shows the way if you ask (or say yes)",
     "Updater: falls back to Windows curl/PowerShell when Python can't reach GitHub, waits for Wi-Fi at start, new update-cubot.bat",
     "Say 'Hey Cubot' while she is talking to stop her and ask something new",

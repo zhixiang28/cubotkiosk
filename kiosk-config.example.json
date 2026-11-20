@@ -3,6 +3,8 @@
   "model": "auto",
   "greetPeople": true,
   "handsFree": false,
+  "character": "friendly",
+  "characterSwitch": true,
   "lights": { "pin": "" },
   "updateRepo": "zhixiang28/cubotkiosk",
   "updateBranch": "main",
