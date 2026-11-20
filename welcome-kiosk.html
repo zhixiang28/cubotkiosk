@@ -2969,7 +2969,8 @@ ${CONFIG.internet ? `4. They ask about the world outside this office: news, weat
    Never search for things about ${CONFIG.companyName}, this office or its people: use FACTS for those.
 ` : ""}${CONFIG.internet ? 5 : 4}. Anything else: answer in 1 to 3 short, warm sentences, using FACTS and NOW. If they don't cover it, say you're
    not sure and suggest asking a staff member. Never make things up. No lists, no markdown, no emojis.
-
+Follow-up questions ("how do I get there?", "who sits there?", "and the toilet?") refer to ON SCREEN and the conversation so far.
+${examples()}
 PLACES:
 ${places.join("\n")}
 
@@ -2982,6 +2983,22 @@ ${facts.map(c => "- " + c.text).join("\n")}
 NOW: ${nowText()} (Singapore time)
 TIMERS RUNNING: ${jobsText()}
 ON SCREEN: ${screenText()}`;      // last, so everything above stays cached between questions
+}
+/* A few worked examples with this office's real names: small models follow examples much better than rules */
+function examples() {
+  const find = (list, re) => list.find(x => re.test([x.name, x.role || "", ...(x.aliases || [])].join(" ")));
+  const loo = find(INFO.locations, /toilet|restroom|washroom/i);
+  const pantry = find(INFO.locations, /pantry|kitchen|water|coffee/i);
+  const money = find(INFO.people, /financ|account|invoice/i) || find(INFO.people, /\bhr\b|human/i);
+  const ex = [];
+  if (loo) ex.push(`"I really need to go, where's the nearest one?" -> GO: ${loo.name}`);
+  if (pantry) ex.push(`"I'm so thirsty" -> GO: ${pantry.name}`);
+  if (money) ex.push(`"Who do I talk to about getting paid?" -> PERSON: ${money.name}`);
+  ex.push(`"Can you switch off the lights once I leave in ten minutes?" -> DO: turn off the lights in 10 minutes`);
+  ex.push(`"Give me a shout in half an hour to call my boss" -> DO: remind me in 30 minutes to call my boss`);
+  if (CONFIG.internet) ex.push(`"Will I need an umbrella later?" -> SEARCH: Singapore weather today`);
+  ex.push(`"What does this company do?" -> (a short friendly answer from FACTS)`);
+  return "EXAMPLES:\n" + ex.map(e => "- " + e).join("\n") + "\n";
 }
 /* what the visitor is looking at, so "how do I get there?" or "who sits there?" make sense */
 function screenText() {

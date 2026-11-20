@@ -33,7 +33,10 @@ No internet or GitHub down? Cubot starts with the version it already has.
 | `cubot-update.py` | Downloads and installs a new version from GitHub, and the best AI model for the PC |
 | `kiosk-manifest.json` | Version, which files an update installs, and the AI model tiers |
 | `start-kiosk.bat` / `stop-kiosk.bat` | Open / close the kiosk on Windows |
+| `map-L1.svg` … `map-L6.svg` | 2D floor maps |
+| `three.min.js`, `orbit-controls.js` | 3D walk-through |
 | `vision/` | Face detection (MediaPipe) for greeting people |
+| `ocr/` | Reads parcel labels from the camera (Tesseract) |
 
 ## AI model
 
