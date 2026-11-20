@@ -542,6 +542,10 @@ body.setup .map-wrap { cursor: crosshair; }
   <div class="map-wrap" id="mapWrap"></div>
   <div id="placeBox"><div class="list-title" id="placeTitle">Tap a place to see where it is</div><div class="place-list" id="placeList"></div></div>
   <div class="people-list" id="peopleList" hidden></div>
+  <div id="faceBox" hidden>
+    <p class="pc-text" id="fcText"></p>
+    <div class="chips pc-btns" id="fcBtns"></div>
+  </div>
   <div id="voiceBox" hidden>
     <p class="pc-text" id="vcText">Tap Listen to hear a voice, then Use this voice.</p>
     <div class="vc-sliders">
@@ -642,6 +646,9 @@ const CONFIG = {
   wakeAliases: ["cube bot", "q bot", "cue bot", "queue bot", "cute bot", "cool bot", "cubit", "qubit", "kubo", "kubot",
                 "cubo", "cuba", "cube", "cubert", "kubert"],    // what speech recognition sometimes hears instead of the name
 
+  faceMemory: true,                 // remember faces of people who say "remember me" (and agree), and greet them by name.
+                                    // Only numbers describing the face are kept, in kiosk-settings.json on this PC. No photos.
+  faceMatch: 0.5,                   // how close a face must be to count as the same person (lower = stricter)
   greetPeople: true,                // say hello when the camera sees a face close to the kiosk (nothing is saved or sent)
   greetFaceSize: 0.06,              // how close: face width as a share of the camera picture. 0.06 is about 1.8 m with a normal
                                     // webcam, 0.1 about 1 m; bigger = closer. Press F9 on the kiosk to see your face size live
@@ -1084,7 +1091,8 @@ function renderPeopleInto(box, list, onPick) {
 /* ---------------- Panel ---------------- */
 function openPanel({ mode, loc = null, person = null, people = null, title = null }) {
   const isPeople = mode === "people";
-  stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true;
+  stopCamera(); parcelPicking = false; $("parcelBox").hidden = true; $("lightsBox").hidden = true; $("voiceBox").hidden = true; $("faceBox").hidden = true;
+  FACE.ask = null;
   guideOffer = null; onScreenPerson = null; $("personActions").hidden = true; $("personActions").innerHTML = "";
   panelTarget = loc ? { ...loc, person } : null;
   stopRouteTour();
@@ -1200,6 +1208,8 @@ function closePanel() {
   $("parcelBox").hidden = true;
   $("lightsBox").hidden = true;
   $("voiceBox").hidden = true;
+  $("faceBox").hidden = true;
+  FACE.ask = null;
   stop3D();
   stopRouteTour();
   panelRoute = null;
@@ -1918,7 +1928,7 @@ async function sendParcel(p) {
    this page (through kiosk-server.py), so they survive closing the kiosk, a restart, or switching browser.
    The browser's own storage is kept as a backup. */
 const STORE = { data: {}, server: false, timer: 0 };
-const LS_KEYS = { voice: "cubot-voice", telegram: "cubot-telegram", jobs: "cubot-jobs", character: "cubot-character" };
+const LS_KEYS = { voice: "cubot-voice", telegram: "cubot-telegram", jobs: "cubot-jobs", character: "cubot-character", faces: "cubot-faces" };
 async function storeLoad() {
   for (const [k, ls] of Object.entries(LS_KEYS)) {           // backup copy first
     try { const v = localStorage.getItem(ls); if (v) STORE.data[k] = JSON.parse(v); } catch (e) {}
@@ -2461,7 +2471,8 @@ setInterval(() => {
 
 /* =========================================================
    GREETING: the camera notices a face close to the kiosk
-   Runs on this PC only. No picture is saved or sent anywhere, and nobody is identified.
+   Runs on this PC only. No picture is saved or sent anywhere. Nobody is identified, except people who asked
+   Cubot to remember them (see FACE MEMORY below).
    ========================================================= */
 function loadScript(src) {
   return new Promise((ok, no) => {
@@ -2490,6 +2501,7 @@ async function seeInit() {
     await seeCamera();
     SEE.on = true;
     setInterval(seeTick, 450);
+    if (faceOn() && faceList().length) setTimeout(faceLoad, 5000);     // people to recognise: get the face models ready
   } catch (e) {
     console.warn("Greeting is off:", e);
     setStatus(/not found$/.test(e.message) ? "Greeting is off: the vision folder is missing."
@@ -2544,12 +2556,21 @@ function seeResults(res) {
     SEE.greeted = true;
     SEE.lastGreet = now;
     if (!resetDone) welcome();
-    seeGreet();
+    faceGreet();
   }
 }
-function seeGreet() {
+function seeGreet(who) {
   const h = new Date().getHours(), hello = h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
   const name = CONFIG.botName;
+  if (who) {                                                // someone Cubot has learned to recognise
+    const first = who.name.split(/\s+/)[0], again = Date.now() - (who.seen || 0) < 3 * 3600e3;
+    wink();
+    if (cheeky()) say(pick(again ? [`${first}! Back so soon? You must really like me.`, `Oh look, it's ${first} again! Did you miss me?`, `${first}! I knew you couldn't stay away. Hee hee.`]
+                                 : [`${hello}, ${first}! I never forget a face. Especially yours.`, `Psst, ${first}! ${hello}! I recognised you from a mile away.`, `Well well well, if it isn't ${first}! ${hello}!`]));
+    else say(pick(again ? [`Hi again, ${first}! What can I do for you?`, `Welcome back, ${first}!`]
+                        : [`${hello}, ${first}! Nice to see you again.`, `${hello}, ${first}! How can I help you today?`]));
+    return;
+  }
   if (cheeky()) {
     wink();
     const how = WAKE.on ? `Say, Hey ${name}, and ask me anything.` : "Tap a button or type a question.";
@@ -2565,6 +2586,202 @@ function seeGreet() {
            `${hello}! Welcome to ${CONFIG.companyName}. How can I help you today?`);
 }
 
+
+/* =========================================================
+   FACE MEMORY: "remember me" -> asks the name and permission -> learns the face -> greets them by name next time
+   Uses face-api.js (vision/faces) on this PC only. What is kept is 128 numbers per face sample in
+   kiosk-settings.json ("faces"), never a photo. "Forget me" deletes that person; "forget all faces" deletes everyone.
+   ========================================================= */
+const FACE = { ready: false, loading: null, ask: null, busy: false, current: null };
+const faceList = () => storeGet("faces") || [];
+function faceOn() { return CONFIG.faceMemory !== false && CONFIG.greetPeople !== false; }
+async function faceLoad() {
+  if (FACE.ready || !faceOn()) return FACE.ready;
+  FACE.loading = FACE.loading || (async () => {
+    try {
+      if (!window.faceapi) await loadScript("vision/faces/face-api.js");
+      try { await faceapi.tf.setBackend("webgl"); } catch (e) { await faceapi.tf.setBackend("cpu"); }
+      await faceapi.tf.ready();
+      await Promise.all([faceapi.nets.tinyFaceDetector.loadFromUri("vision/faces"), faceapi.nets.faceLandmark68Net.loadFromUri("vision/faces"),
+                         faceapi.nets.faceRecognitionNet.loadFromUri("vision/faces")]);
+      FACE.ready = true;
+    } catch (e) {
+      console.warn("Face memory is off:", e);
+      setStatus("Face memory is off: " + (/not found/.test(e.message) ? "the vision/faces folder is missing." : "it couldn't start on this PC."), "face");
+    }
+    return FACE.ready;
+  })();
+  return FACE.loading;
+}
+/* one look through the camera: the biggest face's 128 numbers, or null */
+async function faceRead() {
+  if (!SEE.on || SEE.paused || !SEE.video || SEE.video.readyState < 2 || !(await faceLoad())) return null;
+  while (FACE.busy) await new Promise(r => setTimeout(r, 80));
+  FACE.busy = true;
+  try {
+    const all = await faceapi.detectAllFaces(SEE.video, new faceapi.TinyFaceDetectorOptions({ inputSize: 416, scoreThreshold: 0.5 }))
+      .withFaceLandmarks().withFaceDescriptors();
+    if (!all.length) return null;
+    all.sort((a, b) => b.detection.box.area - a.detection.box.area);
+    return Array.from(all[0].descriptor);
+  } catch (e) { console.warn("Face read:", e); return null; }
+  finally { FACE.busy = false; }
+}
+function faceDist(a, b) { let s = 0; for (let i = 0; i < a.length; i++) { const d = a[i] - b[i]; s += d * d; } return Math.sqrt(s); }
+function faceMatch(desc) {
+  let best = null, bestD = Infinity;
+  for (const p of faceList()) for (const d of p.d) { const x = faceDist(desc, d); if (x < bestD) { bestD = x; best = p; } }
+  return best && bestD < (CONFIG.faceMatch || 0.5) ? best : null;
+}
+/* who is in front of the camera right now (a few tries), or null */
+async function faceWho(tries = 3) {
+  if (!faceList().length) return null;
+  for (let i = 0; i < tries; i++) {
+    const d = await faceRead();
+    if (d) { const p = faceMatch(d); if (p) return p; }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return null;
+}
+function faceSeen(p) {
+  const list = faceList(), q = list.find(x => x.id === p.id);
+  if (!q) return;
+  q.seen = Date.now();
+  storeSet("faces", list);
+  FACE.current = { name: q.name, at: Date.now() };
+}
+/* the greeting: by name if the face is known, otherwise the normal hello */
+async function faceGreet() {
+  if (!faceOn() || !faceList().length) { seeGreet(); return; }
+  const t0 = Date.now();
+  const p = await Promise.race([faceWho(2), new Promise(r => setTimeout(() => r(null), 2500))]);
+  if (state !== "idle" || document.body.classList.contains("has-panel") || Date.now() - t0 > 4000) return;   // they started using the kiosk
+  if (p) { const before = { ...p }; faceSeen(p); seeGreet(before); } else seeGreet();
+}
+/* who the AI is talking to (for its prompt) */
+function faceTalking() {
+  const c = FACE.current;
+  return c && Date.now() - c.at < 5 * 60e3 && Date.now() - SEE.lastNear < 20e3 ? `${c.name} (recognised by face)` : "someone (not recognised)";
+}
+function faceBox(title, text, buttons) {
+  showOnly("faceBox", title);
+  $("fcText").textContent = text;
+  const box = $("fcBtns"); box.innerHTML = "";
+  for (const [label, fn, primary] of buttons) {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip" + (primary ? " primary" : ""); b.textContent = label;
+    b.addEventListener("click", () => { activity(); fn(); });
+    box.appendChild(b);
+  }
+}
+const cleanName = t => t.replace(/^\s*(?:hey\s+\w+,?\s*)?(?:ok(?:ay)?,?\s*)?(?:it'?s|i'?m|i am|my name is|my name'?s|call me|this is|name'?s|you can call me)\s+/i, "")
+  .replace(/[.!?,]+$/, "").replace(/\b(please|thanks|thank you)\b/gi, "").trim();
+function faceNameOk(n) { return n && n.length <= 40 && /^[\p{L}][\p{L} .'-]*$/u.test(n) && n.split(/\s+/).length <= 4; }
+const titleCase = n => n.toLowerCase().replace(/(^|[\s'-])\p{L}/gu, m => m.toUpperCase());
+/* step 1: "remember me" (with or without a name) */
+function faceStart(name) {
+  if (!faceOn()) { say("Sorry, face memory is switched off on this kiosk."); return; }
+  if (!SEE.on) { say("Sorry, I can't see you. My camera isn't working right now."); return; }
+  faceLoad();                                                  // start loading while we talk
+  if (!faceNameOk(name)) {
+    faceBox("Nice to meet you!", "What's your name? Say it, or type it below.", [["Cancel", () => { closePanel(); say("Okay, no problem!"); }]]);
+    FACE.ask = { step: "name", until: Date.now() + 60e3 };          // after faceBox: opening the panel clears FACE.ask
+    say(cheeky() ? "Ooh, a new friend! What's your name? I promise not to make fun of it. Much." : "I'd love to remember you! What's your name?");
+    return;
+  }
+  faceConsent(name);
+}
+/* step 2: ask permission */
+function faceConsent(raw) {
+  const staff = findPeople(raw);
+  const name = staff.length === 1 && tokens(staff[0].name).length > 1 && nameScore(tokens(raw), staff[0].name) >= 1.5 ? staff[0].name : titleCase(raw);
+  const first = name.split(/\s+/)[0];
+  const text = `Hi ${first}! Shall I remember your face, so I can greet you by name next time? I only keep numbers that describe your face, on this computer. No photo. Say "forget me" any time and I'll delete them.`;
+  faceBox(`Remember ${name}?`, text, [["Yes, remember me", () => faceLearn(name), true], ["No thanks", faceNo]]);
+  FACE.ask = { step: "consent", name, until: Date.now() + 60e3 };
+  say(`Hi ${first}! Shall I remember your face, so I can greet you by name next time? I don't keep a photo, and you can say forget me any time.`);
+}
+function faceNo() { FACE.ask = null; closePanel(); say(cheeky() ? "Fine, stay mysterious! I like it." : "No problem! I won't remember your face."); }
+/* step 3: learn the face (a few samples, looking at the screen) */
+async function faceLearn(name) {
+  FACE.ask = null;
+  faceBox(`Learning ${name}'s face`, "Look at my eyes for a moment and stay still...", []);
+  say("Great! Look at my eyes for a moment, and stay still.");
+  const samples = [];
+  const until = Date.now() + 9000;
+  await new Promise(r => setTimeout(r, 1200));
+  while (samples.length < 4 && Date.now() < until) {
+    const d = await faceRead();
+    if (d && !samples.some(x => faceDist(x, d) < 0.01)) samples.push(d);     // skip the same frame read twice
+    await new Promise(r => setTimeout(r, 450));
+  }
+  if (samples.length < 2) {
+    faceBox("I couldn't see you", "Please stand in front of me, facing the screen, and try again.", [["Try again", () => faceLearn(name), true], ["Cancel", () => closePanel()]]);
+    say(FACE.ready ? "Hmm, I couldn't see your face clearly. Please face the screen and try again." : "Sorry, my face memory couldn't start on this computer.");
+    return;
+  }
+  const list = faceList();
+  const round = d => d.map(v => Math.round(v * 1000) / 1000);
+  let p = list.find(x => x.name.toLowerCase() === name.toLowerCase());
+  if (!p) { p = { id: Date.now().toString(36), name, d: [], added: new Date().toISOString().slice(0, 10), seen: 0 }; list.push(p); }
+  p.d = p.d.concat(samples.map(round)).slice(-6);                            // keep the newest 6 samples
+  p.seen = Date.now();
+  if (list.length > 300) list.sort((a, b) => (b.seen || 0) - (a.seen || 0)).splice(300);
+  storeSet("faces", list);
+  FACE.current = { name, at: Date.now() };
+  const first = name.split(/\s+/)[0];
+  faceBox("All done!", `I'll recognise you next time, ${first}. Say "forget me" whenever you want me to delete your face.`, [["OK", () => closePanel(), true]]);
+  mood("happy", 2500); wink();
+  say(cheeky() ? `Got it, ${first}! Your face is now in my secret collection. Just kidding. Mostly.` : `Nice to meet you, ${first}! I'll remember you next time.`);
+}
+/* "forget me" */
+async function faceForget() {
+  if (!faceList().length) { say("I don't have anyone's face saved."); return; }
+  say("Okay, let me look at you.");
+  const p = await faceWho(4);
+  if (!p) { say("I don't think I have your face saved, so there's nothing to forget."); return; }
+  storeSet("faces", faceList().filter(x => x.id !== p.id));
+  FACE.current = null;
+  say(cheeky() ? `Poof! ${p.name.split(/\s+/)[0]}, who? I've forgotten your face.` : `Done, ${p.name.split(/\s+/)[0]}. I've deleted your face from my memory.`);
+}
+/* "who am I?" / "do you remember me?" */
+async function faceWhoAmI() {
+  if (!faceOn() || !SEE.on) { say("Sorry, I can't see you right now. My camera isn't working."); return; }
+  say(cheeky() ? "Hmm, let me have a good look at you..." : "Let me have a look...");
+  const p = await faceWho(4);
+  if (p) { faceSeen(p); say(cheeky() ? `You're ${p.name}! Did you think I'd forget? Never.` : `You're ${p.name}! Nice to see you.`); }
+  else say(`I don't think we've met yet. Say "remember me" and I'll learn your face.`);
+}
+function faceForgetAll() {
+  const n = faceList().length;
+  if (!n) { say("I don't have anyone's face saved."); return; }
+  faceBox("Forget all faces?", `This deletes the ${n} face${n > 1 ? "s" : ""} I remember. Nobody will be greeted by name until they ask me again.`,
+    [["Yes, forget everyone", () => { storeSet("faces", []); FACE.current = null; closePanel(); say("Done. I've forgotten every face."); }, true], ["Cancel", () => closePanel()]]);
+  say(`Do you really want me to forget all ${n} faces?`);
+}
+/* typed or spoken commands; returns true when handled */
+function faceCommand(text) {
+  if (FACE.ask && Date.now() > FACE.ask.until) { FACE.ask = null; }
+  if (FACE.ask && FACE.ask.step === "name") {
+    if (/^\s*(no|cancel|never ?mind|stop)\b/i.test(text)) { closePanel(); say("Okay, no problem!"); return true; }
+    const n = cleanName(text);
+    if (faceNameOk(n)) { faceConsent(n); return true; }
+    say("Sorry, I didn't catch that. What's your name?"); return true;
+  }
+  if (FACE.ask && FACE.ask.step === "consent") {
+    if (/^\s*(yes|yeah|yep|sure|ok|okay|please|go ahead|of course|remember me)\b/i.test(text)) { faceLearn(FACE.ask.name); return true; }
+    if (/^\s*(no|nope|nah|not now|don'?t|no thanks)\b/i.test(text)) { faceNo(); return true; }
+  }
+  if (!faceOn()) return false;
+  if (/\bforget (all|every(one|body)'?s?|all the) faces?\b|\bforget everyone\b/i.test(text)) { faceForgetAll(); return true; }
+  if (/\b(forget (me|my face|who i am)|delete my face|remove my face)\b/i.test(text)) { faceForget(); return true; }
+  if (/^\s*(who am i|do you (know|remember|recogni[sz]e) (me|who i am)|what'?s my name|can you (recogni[sz]e|remember) me)\b/i.test(text)) { faceWhoAmI(); return true; }
+  let m = text.match(/\b(?:remember|learn|save) (?:me|my face|my name)\b[\s,.!]*(?:(?:i'?m|i am|my name is|it'?s|as)\s+(.+))?$/i);
+  if (m) { faceStart(m[1] ? cleanName(m[1]) : ""); return true; }
+  m = text.match(/^\s*(?:hi|hello|hey)?[\s,!]*(?:my name is|my name'?s|call me)\s+(.+)$/i);
+  if (m && faceNameOk(cleanName(m[1]))) { faceStart(cleanName(m[1])); return true; }
+  return false;
+}
 
 /* =========================================================
    VOICE PICKER: type "change voice" on the kiosk, or press F8
@@ -3710,6 +3927,7 @@ ${facts.map(c => "- " + c.text).join("\n")}
 NOW: ${nowText()} (Singapore time)
 TIMERS RUNNING: ${jobsText()}
 ON SCREEN: ${screenText()}
+TALKING TO: ${faceTalking()}
 HANDSHAKE HAND (${hsConf().place}): ${hsText()}
 MAKERSPACE: ${msText()}`;      // last, so everything above stays cached between questions
 }
@@ -3828,6 +4046,9 @@ async function handleUserText(text) {
     $("you").textContent = quote;
     return;
   }
+
+  // Face memory: "remember me", "my name is ...", "forget me", "who am I?" (and the answers to its questions)
+  if (faceCommand(text)) { $("you").textContent = quote; return; }
 
   // Just introduced someone and asked "Would you like me to show you the way?"
   if (guideOffer && Date.now() < guideOffer.until) {

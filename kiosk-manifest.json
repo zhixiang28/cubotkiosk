@@ -1,6 +1,7 @@
 {
-  "version": "2026.11.20.10",
+  "version": "2026.11.20.11",
   "notes": [
+    "Face memory: say 'remember me' and Cubot learns your face (with permission) and greets you by name; 'forget me' deletes it",
     "Finds people from close spellings (Jessy -> Jessie Chan); the AI no longer guesses where someone sits",
     "Cubot no longer reads emojis or emoticons out loud (they still show on screen)",
     "Character switch at the top: Friendly or Mischievous (cheeky talk, sly face). Or say 'be cheeky' / 'be nice'",

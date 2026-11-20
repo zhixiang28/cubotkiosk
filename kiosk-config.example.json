@@ -2,6 +2,7 @@
   "_comment": "Copy this file to kiosk-config.json on the kiosk PC and keep only the lines you want to change. It is never overwritten by updates.",
   "model": "auto",
   "greetPeople": true,
+  "faceMemory": true,
   "handsFree": false,
   "character": "friendly",
   "characterSwitch": true,
