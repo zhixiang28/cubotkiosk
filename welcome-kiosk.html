@@ -419,6 +419,26 @@ body.compact #personCard { display: none !important; }
 .people-list .role { font-size: 14px; opacity: 0.75; }
 [hidden] { display: none !important; }
 
+/* face moods (handshake reactions) */
+body.mood-happy .eye { height: min(6vw, 9vh); border-radius: 999px 999px 20% 20%; transform: translateY(2vh); }
+body.mood-ouch .eye { height: min(1.6vw, 2.6vh); border-radius: 6px; }
+body.mood-ouch .eyes { gap: min(14vw, 20vh); }
+body.mood-wow .eye { width: min(13vw, 19vh); height: min(13vw, 19vh); }
+body.mood-wow .mouth { width: min(4vw, 6vh); height: min(4vw, 6vh); }
+body.mood-meh .eye { height: min(7vw, 10vh); border-radius: 25% 25% 999px 999px; }
+body.mood-meh .mouth { width: min(3vw, 4vh); }
+.hs-toast { position: fixed; left: 2vw; bottom: 5vh; z-index: 7; background: var(--card-2); color: var(--card-text); border: 2px solid var(--line); border-radius: 14px; padding: 10px 16px; font-weight: 700; font-size: clamp(14px, 1.4vw, 18px); max-width: 44vw; }
+.hs-toast[hidden], .hs-meter[hidden] { display: none; }
+.hs-meter { position: fixed; right: 3vw; top: 50%; transform: translateY(-50%); z-index: 7; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  background: var(--card-2); color: var(--card-text); border: 2px solid var(--line); border-radius: 20px; padding: 16px 18px; width: min(220px, 30vw); }
+.hs-title { font-weight: 800; font-size: clamp(16px, 1.6vw, 22px); }
+.hs-bar { position: relative; width: 70px; height: 46vh; border-radius: 14px; background: var(--bg); margin-right: 64px; }
+.hs-zones div { position: absolute; left: 0; right: 0; }
+.hs-zones span { position: absolute; left: 80px; bottom: 2px; white-space: nowrap; font-size: 13px; color: var(--muted); }
+.hs-fill { position: absolute; left: 14px; right: 14px; bottom: 0; height: 0; border-radius: 8px; background: var(--speak); transition: height 0.35s ease; }
+.hs-peak { position: absolute; left: 4px; right: 4px; height: 3px; background: var(--card-text); bottom: 0; transition: bottom 0.35s ease; }
+.hs-num { font-size: clamp(32px, 4vw, 54px); font-weight: 900; font-variant-numeric: tabular-nums; }
+.hs-state { color: var(--muted); font-size: 14px; text-align: center; }
 .status { position: fixed; bottom: 1vh; left: 2vw; font-size: 12px; line-height: 1.3; color: var(--muted); max-width: 44vw; text-align: left; z-index: 6; }
 body.has-panel .stage { padding-bottom: 5vh; }
 
@@ -519,6 +539,14 @@ body.setup .map-wrap { cursor: crosshair; }
 </aside>
 
 <div class="big-count" id="bigCount" hidden><span id="bigNum"></span><button type="button" id="bigStop" class="chip">Stop countdown</button></div>
+<div class="hs-toast" id="hsToast" hidden></div>
+<div class="hs-meter" id="hsMeter" hidden>
+  <div class="hs-title">Handshake challenge</div>
+  <div class="hs-bar"><div class="hs-zones" id="hsZones"></div><div class="hs-fill" id="hsFill"></div><div class="hs-peak" id="hsPeak"></div></div>
+  <div class="hs-num" id="hsNum">0%</div>
+  <div class="hs-state" id="hsState">Waiting for a handshake…</div>
+  <button type="button" class="chip" onclick="hsStop('OK, challenge cancelled.')">Cancel</button>
+</div>
 <div class="status" id="status"></div>
 <div class="diag" id="diag" hidden></div>
 
@@ -576,6 +604,14 @@ const CONFIG = {
                                     // webcam, 0.1 about 1 m; bigger = closer. Press F9 on the kiosk to see your face size live
   greetAfterAwaySec: 20,            // greet again only after nobody has been close for this long
 
+  handshake: {                      // the handshake hand (ESP32-C3) in the Makerspace, through Supabase
+    enabled: true,
+    device: "handshake-1",
+    place: "Makerspace",
+    nearby: false,                  // true if the handshake stands right next to Cubot (then she always reacts out loud)
+    react: "auto",                  // "auto" = comment out loud only when someone is at the kiosk, "always", or "off"
+    button: true                    // a "Handshake challenge" button on the welcome screen
+  },
   lights: {                         // office lights (the ESP32 smart switch). Works only on the office network
     url: "https://ogxuwchojexznsxvvdhi.supabase.co",
     key: "sb_publishable_pB5HMEXMjVDQiNcWlenV1A_ETc2qaNP",
@@ -620,6 +656,7 @@ const ICON = {
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></svg>',
   bulb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2.2h5c.1-1 .5-1.700 1.100-2.200A6 6 0 0 0 12 3z"/></svg>',
   chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  hand: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 11V6a1.5 1.5 0 0 1 3 0v4M10 10V4.5a1.5 1.5 0 0 1 3 0V10M13 10V5.5a1.5 1.5 0 0 1 3 0V11M16 11V8.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a7 7 0 0 1-5.6-2.8L3 15.5a1.6 1.6 0 0 1 2.4-2.1L7 15"/></svg>',
   clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg>'
 };
 
@@ -2442,6 +2479,7 @@ function renderDiag() {
     `<b>Version</b>   ${(window.KIOSK_VERSION || {}).sha ? `${esc(window.KIOSK_VERSION.version || "")} ${esc(window.KIOSK_VERSION.sha.slice(0, 7))}, installed ${esc(window.KIOSK_VERSION.installed || "?")}` : "not from GitHub yet"}${updateWaiting ? " (new version waiting, reloads when nobody is here)" : ""}`,
     `<b>AI</b>        ${CONFIG.useAI ? `${esc(CONFIG.model)}${HW.why ? ` (${esc(HW.why)})` : ""}${AI.thinkOnly ? " (thinks first: slow)" : ""}, ${AI.gpu || "checking…"}${AI.warmMs ? `, warmed up in ${(AI.warmMs / 1000).toFixed(1)} s` : ""}` : "off (useAI is false)"}`,
     `          last answer: ${AI.at ? `first words after ${(AI.firstMs / 1000).toFixed(1)} s, done in ${(AI.totalMs / 1000).toFixed(1)} s` : "none yet"}`,
+    `<b>Handshake</b> ${!CONFIG.handshake || CONFIG.handshake.enabled === false ? "off" : HS.ok ? `connected (${esc(hsConf().dev)}). ${esc(hsText())}` : "not connected yet"}`,
     `<b>Internet</b>  ${CONFIG.internet ? (NET.at ? `last search ${ago(NET.at)} via ${esc(NET.source || "nothing")} (${NET.ms} ms): "${esc(NET.query)}"` : "no searches yet") + (NET.error ? `  problem: ${esc(NET.error)}` : "") : "off (internet is false)"}`,
     `<b>Voice</b>     ${voice ? esc(voice.name) : "none"}  pitch ${(+voicePitch).toFixed(2)} speed ${(+voiceRate).toFixed(2)}${useLocalVoice ? " (fell back to offline voice)" : ""}`,
     `<b>Screen</b>    ${state}${document.body.classList.contains("has-panel") ? ", panel open" : ""}`,
@@ -2468,6 +2506,7 @@ function buildChips() {
   if (INFO.people.length) add("Find a person", ICON.person, () => { activity(); $("you").textContent = ""; openPanel({ mode: "people" }); say("Who are you looking for? Tap their name, or type it below."); }, true);
   add("I have a delivery", ICON.box, () => { activity(); $("you").textContent = ""; openParcel(); }, true);
   if (lightsReady() && CONFIG.lights.button) add("Lights", ICON.bulb, () => { activity(); $("you").textContent = ""; openLights(); });
+  if (CONFIG.handshake && CONFIG.handshake.enabled !== false && CONFIG.handshake.button) add("Handshake challenge", ICON.hand, () => { activity(); $("you").textContent = ""; hsChallenge(); });
   for (const q of CONFIG.quickQuestions) add(q.label, ICON.chat, () => { stopTalking(); handleUserText(q.ask); });
 }
 
@@ -2849,6 +2888,27 @@ function tryActions(text, quote) {
   const keep = () => { $("you").textContent = quote; return true; };
   const TIMERISH = /\b(timers?|count ?downs?|countdowns?|reminders?|alarms?|schedules?)\b/;
 
+  // handshake: "handshake challenge", "test my grip", "how many handshakes today?", "how did I do?"
+  const HSW = /\b(hand ?shakes?|shake (my |a |the |your )?hands?|grip|handshaking)\b/;
+  if (HS.challenge && /\b(cancel|stop|never ?mind|quit|end)\b/.test(t)) { hsStop("OK, challenge cancelled."); return keep(); }
+  if (HSW.test(t) && /\b(challenge|game|test|battle|contest|play|try|compete|competition)\b/.test(t) || /\b(test|check|measure) my (grip|handshake)\b|\bhow strong is my (grip|handshake)\b/.test(t)) {
+    hsChallenge(); return keep();
+  }
+  if (HSW.test(t) && /\b(how many|today|record|best|strongest|top|stats?|statistics|score|leaderboard|average|most)\b/.test(t)) {
+    if (!HS.ok || !HS.stats) say("Sorry, I can't reach the handshake right now.");
+    else if (!HS.stats.shakes) say(`Nobody has shaken hands with the ${hsConf().place} handshake today yet. Want to be the first? Say "handshake challenge"!`);
+    else {
+      const s = HS.stats;
+      say(`${s.shakes} handshake${s.shakes === 1 ? "" : "s"} so far today. The strongest grip was ${s.best} percent, and the average is ${s.avg} percent. ${s.by.nice} were nice, ${s.by.strong} strong, ${s.by.too_soft} too soft and ${s.by.too_hard} too hard.`,
+        `Handshakes today: ${s.shakes} · strongest ${s.best}% · average ${s.avg}% · nice ${s.by.nice}, strong ${s.by.strong}, too soft ${s.by.too_soft}, too hard ${s.by.too_hard}`);
+    }
+    return keep();
+  }
+  if (/\bhow did i do\b|\bmy (handshake )?(score|result)\b/.test(t) && HS.lastVerdict && Date.now() - HS.lastVerdict.at < 10 * 60e3) {
+    const v = HS.lastVerdict; mood(HS_MOOD[v.verdict]);
+    say(`Your last handshake was ${HS_NAME[v.verdict]}, with a ${v.force} percent grip. ${pick(HS_LINES[v.verdict] || HS_LINES.nice)}`); return keep();
+  }
+
   // cancel: "cancel the timer", "stop the countdown", "never mind the light timer"
   const CANCEL = /\b(cancel|cancell?ed|stop|delete|clear|remove|reset|never ?mind|forget|end|abort|kill|turn off|switch off|don'?t)\b/;
   const bareCancel = JOBS.length && /^\s*(please\s+)?(cancel|stop|never ?mind|forget|abort)(\s+(it|that|this|them|everything|all|please|now))*\s*[.!]?\s*$/.test(t);
@@ -2926,6 +2986,167 @@ function tryActions(text, quote) {
   return false;
 }
 
+/* ---------------- Handshake (the Makerspace handshake hand) ----------------
+   The handshake device (ESP32-C3, force sensor + ultrasonic) writes its events to Supabase. Cubot watches them:
+   - reacts with a face and a comment when someone shakes its hand ("Ouch! My circuits!")
+   - "handshake challenge": a live grip meter on screen, a verdict and a score, and today's record
+   - knows today's handshake stats, so "how many handshakes today?" or "what's the strongest grip?" work */
+const HS = { ok: false, last: 0, busy: false, cfg: null, stats: null, statsAt: 0, lastVerdict: null, challenge: null, meterTimer: 0, errors: 0 };
+const HS_LINES = {
+  too_soft: ["That was a bit of a limp fish! Give it a real squeeze next time.", "So gentle! Are you shy? Try a firmer grip.", "Hmm, a feather handshake. Squeeze like you mean it!"],
+  nice: ["Perfect handshake! Firm and friendly, ten out of ten.", "Now that is a proper handshake. Very professional!", "Lovely grip. You'd ace any job interview!"],
+  strong: ["Ooh, strong grip! You mean business.", "Solid handshake! Confident, I like it.", "Strong one! Somebody's been lifting."],
+  too_hard: ["Ouch! My circuits! Easy there, strong one.", "Whoa, a crusher! Maybe save that for opening jars.", "Help! I think you bent my sensor!"]
+};
+const HS_MOOD = { too_soft: "meh", nice: "happy", strong: "wow", too_hard: "ouch" };
+const HS_NAME = { too_soft: "too soft", nice: "nice", strong: "strong", too_hard: "too hard" };
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const hsConf = () => { const c = lightsCfg(), h = CONFIG.handshake || {}; return { url: (h.url || c.url || "").replace(/\/$/, ""), key: h.key || c.key, dev: h.device || "handshake-1", place: h.place || "Makerspace" }; };
+async function hsGet(q) {
+  const c = hsConf();
+  const r = await fetch(`${c.url}/rest/v1/${q}`, { headers: { apikey: c.key, Authorization: "Bearer " + c.key }, signal: AbortSignal.timeout(6000) });
+  if (!r.ok) throw new Error("handshake " + r.status);
+  return r.json();
+}
+function mood(m, ms = 2600) {
+  document.body.classList.remove("mood-happy", "mood-ouch", "mood-wow", "mood-meh");
+  clearTimeout(mood.t);
+  if (!m) return;
+  document.body.classList.add("mood-" + m);
+  mood.t = setTimeout(() => document.body.classList.remove("mood-" + m), ms);
+}
+async function hsInit() {
+  if (!CONFIG.handshake || CONFIG.handshake.enabled === false || !hsConf().url) return;
+  const c = hsConf();
+  try {
+    const [rows, set] = await Promise.all([
+      hsGet(`handshake_events?device_id=eq.${encodeURIComponent(c.dev)}&select=id&order=id.desc&limit=1`),
+      hsGet(`handshake_settings?device_id=eq.${encodeURIComponent(c.dev)}&select=soft_max,nice_max,strong_max,enabled`)
+    ]);
+    HS.last = rows[0] ? rows[0].id : 0;
+    HS.cfg = set[0] || { soft_max: 30, nice_max: 60, strong_max: 95 };
+    HS.ok = true;
+    hsStats();
+  } catch (e) { setTimeout(hsInit, 60e3); return; }
+  (function loop() { hsPoll().finally(() => setTimeout(loop, HS.challenge ? 700 : 2000)); })();
+  setInterval(hsStats, 120e3);
+}
+async function hsPoll() {
+  if (HS.busy) return;
+  HS.busy = true;
+  try {
+    const rows = await hsGet(`handshake_events?device_id=eq.${encodeURIComponent(hsConf().dev)}&id=gt.${HS.last}&order=id.asc&limit=25`);
+    for (const e of rows) { HS.last = Math.max(HS.last, e.id); hsEvent(e); }
+    HS.ok = true; HS.errors = 0;
+  } catch (e) { if (++HS.errors > 3) HS.ok = false; }
+  finally { HS.busy = false; }
+}
+/* today's numbers, for "how many handshakes today?" and for the AI */
+async function hsStats() {
+  const day = new Date(); day.setHours(0, 0, 0, 0);
+  try {
+    const rows = await hsGet(`handshake_events?device_id=eq.${encodeURIComponent(hsConf().dev)}&type=in.(verdict,approach)&created_at=gte.${encodeURIComponent(day.toISOString())}&select=type,force_pct,verdict,created_at&order=id.asc&limit=3000`);
+    const v = rows.filter(r => r.type === "verdict" && r.force_pct != null);
+    const by = { too_soft: 0, nice: 0, strong: 0, too_hard: 0 };
+    v.forEach(r => { if (by[r.verdict] != null) by[r.verdict]++; });
+    HS.stats = { day: day.getTime(), shakes: v.length, visits: rows.length - v.length, best: v.reduce((m, r) => Math.max(m, r.force_pct), 0),
+      avg: v.length ? Math.round(v.reduce((a, r) => a + r.force_pct, 0) / v.length) : 0, by, top: v.map(r => r.force_pct).sort((a, b) => b - a).slice(0, 5) };
+    HS.statsAt = Date.now();
+    const lastV = [...v].pop();
+    if (lastV && !HS.lastVerdict) HS.lastVerdict = { verdict: lastV.verdict, force: lastV.force_pct, at: Date.parse(lastV.created_at) };
+  } catch (e) {}
+}
+function hsText() {
+  if (!HS.ok || !HS.stats) return "not connected";
+  const s = HS.stats;
+  if (!s.shakes) return `no handshakes yet today. Visitors can say "handshake challenge" to play.`;
+  const last = HS.lastVerdict ? ` Last one: ${HS_NAME[HS.lastVerdict.verdict]}, ${HS.lastVerdict.force}% grip, ${fmtSpan(Math.max(1, Math.round((Date.now() - HS.lastVerdict.at) / 1000)))} ago.` : "";
+  return `${s.shakes} handshake${s.shakes === 1 ? "" : "s"} today, strongest grip ${s.best}%, average ${s.avg}%; ${s.by.nice} nice, ${s.by.strong} strong, ${s.by.too_soft} too soft, ${s.by.too_hard} too hard.${last} Visitors can say "handshake challenge" to play.`;
+}
+function hsToast(text) {
+  const el = $("hsToast");
+  el.textContent = text; el.hidden = false;
+  clearTimeout(hsToast.t); hsToast.t = setTimeout(() => { el.hidden = true; }, 7000);
+}
+function hsEvent(e) {
+  const ch = HS.challenge;
+  if (e.type === "verdict" && e.force_pct != null) {
+    const s = HS.stats && HS.stats.day === new Date().setHours(0, 0, 0, 0) ? HS.stats : null;
+    const record = s ? e.force_pct > s.best && s.shakes >= 2 : false;
+    if (s) {                                               // count it straight away, without waiting for the next refresh
+      s.shakes++; s.by[e.verdict] = (s.by[e.verdict] || 0) + 1; s.avg = Math.round((s.avg * (s.shakes - 1) + e.force_pct) / s.shakes);
+      s.best = Math.max(s.best, e.force_pct); s.top = [...s.top, e.force_pct].sort((a, b) => b - a).slice(0, 5);
+    }
+    HS.lastVerdict = { verdict: e.verdict, force: e.force_pct, at: Date.now() };
+    const place = hsConf().place;
+    if (ch) { hsFinish(e, record); return; }
+    hsToast(`${place} handshake: ${HS_NAME[e.verdict] || e.verdict}, ${e.force_pct}% grip${record ? " (today's record!)" : ""}`);
+    // say something only when it won't interrupt anyone, and someone is here to hear it (or the handshake is next to me)
+    const react = (CONFIG.handshake || {}).react || "auto";
+    const someoneHere = Date.now() - SEE.lastNear < 15e3 || Date.now() - lastActivity < 30e3;
+    if (react === "off" || state !== "idle" || document.body.classList.contains("has-panel")) return;
+    if (react === "always" || (CONFIG.handshake || {}).nearby || someoneHere) {
+      mood(HS_MOOD[e.verdict]);
+      say(`${(CONFIG.handshake || {}).nearby ? "" : `Someone just shook hands in the ${place}. `}${pick(HS_LINES[e.verdict] || HS_LINES.nice)}${record ? ` And that's the strongest grip today, ${e.force_pct} percent!` : ""}`);
+    } else mood(HS_MOOD[e.verdict], 1800);
+    return;
+  }
+  if (!ch) return;
+  if (e.type === "approach") { $("bot").textContent = "I see you! Now grab the hand and shake it."; }
+  else if (e.type === "hold_start") { mood("wow", 1500); $("bot").textContent = "Squeeeeze!"; }
+  else if (e.type === "timeout" && Date.now() - ch.started > 4000) { hsStop("No handshake this time. Say \"handshake challenge\" to try again!"); }
+}
+
+/* "handshake challenge": live grip meter, then a verdict, a score and today's record */
+function hsChallenge() {
+  if (!HS.ok) { say("Sorry, I can't reach the handshake right now."); return; }
+  if (HS.cfg && HS.cfg.enabled === false) { say("The handshake is switched off at the moment."); return; }
+  const near = (CONFIG.handshake || {}).nearby;
+  HS.challenge = { started: Date.now(), peak: 0 };
+  closePanel();
+  $("hsMeter").hidden = false;
+  hsMeterDraw(0);
+  say(near ? "Handshake challenge! Shake the hand next to me and show me your best handshake. Not too soft, not too hard!"
+    : `Handshake challenge! Go to the handshake hand in the ${hsConf().place} and give it your best handshake. I'll watch your grip from here!`);
+  clearInterval(HS.meterTimer);
+  HS.meterTimer = setInterval(async () => {
+    if (!HS.challenge) return;
+    if (Date.now() - HS.challenge.started > 120e3) { hsStop("Time's up for the handshake challenge. Try again any time!"); return; }
+    try {
+      const [st] = await hsGet(`handshake_status?device_id=eq.${encodeURIComponent(hsConf().dev)}&select=force_pct,state,distance_cm`);
+      if (st && HS.challenge) { HS.challenge.peak = Math.max(HS.challenge.peak, st.force_pct || 0); hsMeterDraw(st.force_pct || 0, st); }
+    } catch (e) {}
+  }, 400);
+}
+function hsMeterDraw(f, st) {
+  const c = HS.cfg || { soft_max: 30, nice_max: 60, strong_max: 95 };
+  const zones = [["too soft", 0, c.soft_max, "var(--muted)"], ["nice", c.soft_max, c.nice_max, "#2ecc71"], ["strong", c.nice_max, c.strong_max, "#f1c40f"], ["too hard", c.strong_max, 100, "#ff5a5f"]];
+  $("hsZones").innerHTML = zones.map(([n, a, b, col]) => `<div style="bottom:${a}%;height:${b - a}%;background:color-mix(in srgb, ${col} 32%, transparent)"><span>${n}</span></div>`).join("");
+  $("hsFill").style.height = Math.max(0, Math.min(100, f)) + "%";
+  $("hsPeak").style.bottom = Math.min(100, HS.challenge ? HS.challenge.peak : 0) + "%";
+  $("hsNum").textContent = Math.round(f) + "%";
+  $("hsState").textContent = st ? (st.state === "IDLE" && st.distance_cm && st.distance_cm < 80 ? "Come closer…" : st.force_pct > 3 ? "Squeezing!" : "Waiting for a handshake…") : "Waiting for a handshake…";
+}
+function hsFinish(e, record) {
+  const f = e.force_pct, s = HS.stats;
+  hsMeterDraw(f);
+  const rank = s ? s.top.indexOf(f) + 1 : 0;
+  // score out of 100: a "nice" grip in the middle of the nice zone is perfect
+  const c = HS.cfg || { soft_max: 30, nice_max: 60, strong_max: 95 };
+  const mid = (c.soft_max + c.nice_max) / 2, half = (c.nice_max - c.soft_max) / 2;
+  const score = Math.max(0, Math.round(100 - Math.max(0, Math.abs(f - mid) - half * 0.4) * 1.6));
+  mood(HS_MOOD[e.verdict], 4000);
+  const holdTxt = e.hold_ms ? ` You held it for ${(e.hold_ms / 1000).toFixed(1)} seconds.` : "";
+  hsStop(`${pick(HS_LINES[e.verdict] || HS_LINES.nice)} Your grip was ${f} percent, that's ${HS_NAME[e.verdict]}. Handshake score: ${score} out of 100.${holdTxt}` +
+    (record ? ` New record! The strongest grip today!` : rank && rank <= 3 && s.shakes > 3 ? ` That's number ${rank} today!` : ""), 6000);
+}
+function hsStop(msg, keepMeter = 0) {
+  HS.challenge = null;
+  clearInterval(HS.meterTimer);
+  setTimeout(() => { if (!HS.challenge) $("hsMeter").hidden = true; }, keepMeter);
+  if (msg) say(msg);
+}
+
 /* ---------------- Answering ---------------- */
 function documentAnswer(question) {
   const hits = findChunks(question, 1);
@@ -2959,7 +3180,7 @@ Work out what the visitor really needs, even if they ask in a roundabout way, th
    a meeting room, parking, deliveries...). Reply with exactly one line: GO: <place name copied exactly from PLACES>
 2. They are looking for a person, by name or by job, team or what the person handles (for example "someone about invoices").
    Reply with exactly one line: PERSON: <full name copied exactly from PEOPLE>
-3. They want you to DO something: a countdown, a timer, a reminder, check or cancel a timer, maths, or switching the ${lightsReady() ? lightsCfg().room + " " : ""}lights now or later.
+3. They want you to DO something: a countdown, a timer, a reminder, check or cancel a timer, maths, a handshake challenge, or switching the ${lightsReady() ? lightsCfg().room + " " : ""}lights now or later.
    Reply with exactly one line: DO: <the request in plain short words, times as numbers>
    For example: "DO: remind me in 15 minutes to call John", "DO: turn off the wall light in 10 minutes", "DO: countdown 30 seconds",
    "DO: timer at 5:34 pm", "DO: cancel the timer", "DO: how long is left on the timer". TIMERS RUNNING lists what is set now.
@@ -2982,7 +3203,8 @@ ${facts.map(c => "- " + c.text).join("\n")}
 
 NOW: ${nowText()} (Singapore time)
 TIMERS RUNNING: ${jobsText()}
-ON SCREEN: ${screenText()}`;      // last, so everything above stays cached between questions
+ON SCREEN: ${screenText()}
+HANDSHAKE HAND (${hsConf().place}): ${hsText()}`;      // last, so everything above stays cached between questions
 }
 /* A few worked examples with this office's real names: small models follow examples much better than rules */
 function examples() {
@@ -3490,7 +3712,7 @@ Promise.all([loadInfo(), storeLoad()]).then(() => {
   if (Q.has("telegram")) telegramSetup();
   else if (VOICES) voiceTester();
   else if (SETUP) setupMode();
-  else { welcome(); checkOllama(); tgPoll(); wakeInit(); seeInit(); if (Q.has("debug")) toggleDiag(); }
+  else { welcome(); checkOllama(); tgPoll(); wakeInit(); seeInit(); hsInit(); if (Q.has("debug")) toggleDiag(); }
 });
 </script>
 </body>
