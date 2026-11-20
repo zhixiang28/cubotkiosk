@@ -619,6 +619,7 @@ const CONFIG = {
 
   wakeWord: "auto",                 // always listen for "Hey Cubot". "auto" = on this PC if it can, otherwise the browser's
                                     // online speech service (Google in Chrome). "local" = only on this PC, "off" = tap or type only
+  bargeIn: true,                    // saying "Hey Cubot" while she is talking stops her and she listens to you
   wakeAliases: ["cube bot", "q bot", "cue bot", "queue bot", "cute bot", "cool bot", "cubit", "qubit", "kubo", "kubot",
                 "cubo", "cuba", "cube", "cubert", "kubert"],    // what speech recognition sometimes hears instead of the name
 
@@ -2234,8 +2235,11 @@ function wakeOnResult(e) {
   WAKE.retryMs = 400;
   const last = e.results[e.results.length - 1];
   if (last && last[0]) { WAKE.heard = (last[0].transcript || "").trim(); WAKE.heardAt = Date.now(); }
+  const talking = (speakingNow || state === "speaking") && !countTalk;
+  // "Hey Cubot" while I'm talking: stop and listen. Anything else I hear while talking is probably my own voice.
+  if ((talking || state === "thinking") && CONFIG.bargeIn) { bargeCheck(e); return; }
   // never listen to my own voice, or while I'm still working on an answer
-  if (((speakingNow || state === "speaking") && !countTalk) || state === "thinking" || Date.now() < WAKE.muteUntil) return;
+  if (talking || state === "thinking" || Date.now() < WAKE.muteUntil) return;
   if (countTalk && /^[\s\d.,!]*$|^\s*((one|two|three|four|five|six|seven|eight|nine|ten|zero|time'?s up)[\s.,!]*)+$/i.test(WAKE.heard)) return;   // my own countdown
   for (let i = e.resultIndex; i < e.results.length; i++) {
     const r = e.results[i], text = (r[0].transcript || "").trim();
@@ -2260,6 +2264,31 @@ function wakeOnResult(e) {
         if (!garbled) wakeRun(text);
       }
     }
+  }
+}
+/* Interrupting: the wake phrase can come anywhere in what the mic heard (my own words may come first).
+   Ignore it when I am saying my own name, or when what was heard is mostly what I'm saying (echo). */
+function bargeCheck(e) {
+  const r = e.results[e.results.length - 1];
+  if (!r || !r[0]) return;
+  const text = (r[0].transcript || "").trim(), words = text.split(/\s+/);
+  const mine = tokens(nowSpeaking || "");
+  const saysName = mine.some(w => wakeSplit(w) || wakeSplit("hey " + w));
+  for (let i = 0; i < words.length; i++) {
+    const hit = wakeSplit(words.slice(i).join(" "));
+    if (!hit) continue;
+    const before = tokens(words.slice(0, i).join(" ")), heard = tokens(words.slice(i).join(" "));
+    const echo = heard.length > 2 && heard.filter(w => mine.includes(w)).length / heard.length > 0.6;
+    if (saysName && !before.length && heard.length <= 2) return;                 // I'm saying "Cubot" myself
+    if (echo) return;
+    turnSeq++;                                                                     // drop the rest of my answer
+    WAKE.inUtterance = true;
+    wakeBlip();
+    wakeArm();
+    $("you").textContent = hit.rest ? "“" + hit.rest + "”" : "";
+    WAKE.muteUntil = 0;
+    if (r.isFinal && hit.rest.replace(/[^a-z0-9]/gi, "").length > 2) { WAKE.inUtterance = false; wakeRun(hit.rest); }
+    return;
   }
 }
 function wakeStart() {
@@ -2569,7 +2598,8 @@ function setState(s) {
     thinking: "Let me check…",
     speaking: "Tap my face to interrupt"
   }[s];
-  if (s === "speaking" && !countTalk) wakePause(); else wakeResume();    // never listen to my own voice (except countdown numbers)
+  // while talking, only listen for "Hey Cubot" (to be interrupted), and only if bargeIn is on
+  if (s === "speaking" && !countTalk && !CONFIG.bargeIn) wakePause(); else wakeResume();
 }
 function blink() {
   eyeEls.forEach(e => { e.classList.remove("blink"); void e.offsetWidth; e.classList.add("blink"); });
@@ -2638,7 +2668,7 @@ pickVoice();
 /* Speech queue. Chrome/Edge sometimes drop speech right after cancel(), or an online voice
    fails silently, so each sentence is watched: if it never starts, Cubot retries it with the
    built-in Windows voice. */
-let speechGen = 0, speakingNow = false, useLocalVoice = false;
+let speechGen = 0, speakingNow = false, useLocalVoice = false, nowSpeaking = "", turnSeq = 0;
 function localVoice() {
   const en = speechSynthesis.getVoices().filter(v => v.lang.startsWith("en") && v.localService);
   return en.find(v => /zira|female|hazel|susan/i.test(v.name)) || en[0] || null;
@@ -2655,10 +2685,11 @@ function enqueueSpeech(text) {
 }
 function speakNext(g) {
   if (g !== speechGen) return;
-  if (!speakQueue.length) { speakingNow = false; if (streamDone) finishTurn(); else setState("thinking"); return; }
+  if (!speakQueue.length) { speakingNow = false; nowSpeaking = ""; if (streamDone) finishTurn(); else setState("thinking"); return; }
   const text = speakQueue.shift();
   const v = useLocalVoice ? localVoice() : voice;
   const u = new SpeechSynthesisUtterance(text);
+  nowSpeaking = text;
   if (v) { u.voice = v; u.lang = v.lang; } else u.lang = CONFIG.speechLang;
   u.rate = voiceRate;
   u.pitch = voicePitch;
@@ -2699,6 +2730,7 @@ function say(text, shown) {
 }
 function stopTalking() {
   speechGen++;
+  nowSpeaking = "";
   speakQueue = [];
   speakingNow = false;
   speechSynthesis.cancel();
@@ -3572,6 +3604,7 @@ function aiRoute(kind, name) {
 
 async function handleUserText(text) {
   activity();
+  const myTurn = ++turnSeq;
   const quote = "“" + text + "”";
   $("you").textContent = quote;
 
@@ -3614,6 +3647,9 @@ async function handleUserText(text) {
 
   // Things Cubot can do: timers, countdowns, reminders, lights now or later, quick maths, "say that again"
   if (tryActions(text, quote)) return;
+  if (/^\s*(please\s+)?(stop|stop talking|stop it|shut up|be quiet|quiet|shush|shh+|enough|that's enough|ok|okay|thanks|thank you|never ?mind|cancel|nothing)( please| thanks| thank you)?[.!]*\s*$/i.test(text)) {
+    stopTalking(); closePanel(); $("bot").textContent = "OK!"; setState("idle"); mood("happy", 1500); return;
+  }
 
   // 1. Places and people come straight from the document and are shown on the map.
   const locHit = findLocation(text);
@@ -3642,6 +3678,7 @@ async function handleUserText(text) {
   const t0 = performance.now(); let tFirst = 0;
   const ROUTE = /^[\s*"'`]*(GO|PERSON|SEARCH|DO)\s*:\s*/i;
   const flush = final => {
+    if (myTurn !== turnSeq) { T.buffer = ""; return; }           // interrupted ("Hey Cubot…"): say nothing more
     let m;
     // start talking at the first comma of a long sentence, so the visitor hears something sooner
     if (!T.shown && (m = T.buffer.match(/^[^.!?]*?[,;:](?=\s)/)) && m[0].trim().split(/\s+/).length >= 6) {
@@ -3690,6 +3727,7 @@ async function handleUserText(text) {
       return thinkState === false ? full : "";
     };
     while (true) {
+      if (myTurn !== turnSeq) { try { reader.cancel(); } catch (e) {} break; }    // interrupted: stop reading the answer
       const { value, done } = await reader.read();
       if (done) break;
       pending += decoder.decode(value, { stream: true });
@@ -3722,6 +3760,7 @@ async function handleUserText(text) {
       if (!mode && (vis.length >= 9 || vis.includes("\n"))) mode = ROUTE.test(vis) ? "route" : "say";
       if (mode === "say") { const first = !sayStarted; startSay(); T.buffer += first ? vis : add; flush(false); }
     });
+    if (myTurn !== turnSeq) return;                     // interrupted while I was thinking
     if (!mode) mode = ROUTE.test(visible) ? "route" : "say";
     if (mode === "say" && !sayStarted) { startSay(); T.buffer = visible.trim() ? visible : documentAnswer(text); }
     if (mode === "route") {
@@ -3739,6 +3778,7 @@ async function handleUserText(text) {
         const query = m[2].trim().slice(0, 150);
         T.shown = "Let me look that up. "; $("bot").textContent = "Let me look that up…"; enqueueSpeech("Let me look that up.");
         const results = await webSearch(query);
+        if (myTurn !== turnSeq) return;
         T.shown = "";
         if (!results.length) T.buffer = "Sorry, I couldn't find that on the internet right now. Please ask one of our staff.";
         else {
@@ -3766,6 +3806,7 @@ async function handleUserText(text) {
     flush(true);
     timed();
   } catch (err) {
+    if (myTurn !== turnSeq) return;
     console.error(err);
     setStatus(err instanceof TypeError
       ? "Can't reach Ollama at localhost:11434. Is it running? Answering from the document instead."
@@ -3773,6 +3814,7 @@ async function handleUserText(text) {
     T.buffer = documentAnswer(text);
     flush(true);
   }
+  if (myTurn !== turnSeq) { remember(T.shown.trim() || routeLine); return; }   // interrupted: the new turn owns the screen
   if (T.shown.trim()) lastSpoken = T.shown.trim();
   remember(T.shown.trim() || routeLine);
   streamDone = true;

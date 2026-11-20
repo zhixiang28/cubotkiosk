@@ -1,9 +1,9 @@
 {
-  "version": "2026.11.20.4",
+  "version": "2026.11.20.5",
   "notes": [
+    "Say 'Hey Cubot' while she is talking to stop her and ask something new",
     "Makerspace = Team T office: 'right here', directions, and the handshake reacts out loud",
-    "Makerspace data: find tools and stock with a mini map, tools out, light timer, live card, 5pm summary",
-    "Handshake duel mode and invites"
+    "Makerspace data: find tools and stock with a mini map, tools out, light timer, live card, 5pm summary"
   ],
   "files": [
     "welcome-kiosk.html",
