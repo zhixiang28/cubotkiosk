@@ -850,28 +850,53 @@ function findLocation(text) {
 
 // Words that are also people's surnames but common in sentences
 const NAME_STOP = new Set(["see", "low", "saw", "boo", "can", "ang", "aw", "er", "oo", "ho", "ng", "tay", "neo", "lee", "chan", "tan", "lim", "ong", "goh", "koh", "yew", "wong", "soh", "seah", "luo", "lai", "kok", "siew", "sin", "tun", "oo"]);
-function nameScore(textTokens, name) {
-  const nt = tokens(name);
-  let best = 0;
+/* Names heard by the microphone are often spelt differently: Jessy / Jessie / Jesse, Steffi / Stephy, Mathew / Matthew.
+   sameName() allows that, but only for words of 4+ letters that start with the same letter. */
+const nameKey = w => w.replace(/ph/g, "f").replace(/(.)\1+/g, "$1").replace(/(ie|ee|ey|y|i|e)$/, "y").replace(/[aeiou]/g, "");
+function editDist(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return 2;
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[b.length];
+}
+function sameName(a, b) {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4 || a[0] !== b[0] || NAME_STOP.has(a)) return false;
+  return nameKey(a) === nameKey(b) || (a.length >= 5 && b.length >= 5 && editDist(a, b) <= 1);
+}
+function nameScoreWith(textTokens, nt, eq) {
+  let best = 0, hit = "";
   for (let i = 0; i < nt.length; i++) {
     for (let j = 0; j < textTokens.length; j++) {
       let k = 0;
-      while (i + k < nt.length && j + k < textTokens.length && nt[i + k] === textTokens[j + k]) k++;
-      if (k > best) best = k;
+      while (i + k < nt.length && j + k < textTokens.length && eq(textTokens[j + k], nt[i + k])) k++;
+      if (k > best) { best = k; hit = nt[i]; }
     }
   }
   if (best === 1) {
     // a single word only counts if it's a real given name, not a common word or very common surname
-    const hit = nt.find(w => textTokens.includes(w));
     if (!hit || hit.length < 3 || NAME_STOP.has(hit)) return 0;
   }
   return best ? best + (best === nt.length ? 0.5 : 0) : 0;
 }
+// a near-miss on ONE word ("Jessy") only counts when the visitor is clearly asking for someone, or says just the name
+const PERSON_CUE = /\b(looking for|look for|find|meet|meeting|see|seeing|visit|visiting|speak|talk|call|contact|who'?s|who is|appointment|here for|ask for|asking for|know)\b/i;
+function nameScore(textTokens, name, cue = true) {
+  const nt = tokens(name);
+  const exact = nameScoreWith(textTokens, nt, (a, b) => a === b);
+  let close = nameScoreWith(textTokens, nt, sameName);
+  if (close < 2 && !cue && textTokens.length > 1) close = 0;
+  return Math.max(exact, close ? close - 0.3 : 0, 0);                        // a close spelling ranks just below an exact one
+}
 function findPeople(text) {
-  const tt = tokens(text);
+  const tt = tokens(text), cue = PERSON_CUE.test(text);
   let top = 0, hits = [];
   for (const p of INFO.people) {
-    let sc = Math.max(nameScore(tt, p.name), ...p.aliases.map(a => nameScore(tt, a)), 0);
+    let sc = Math.max(nameScore(tt, p.name, cue), ...p.aliases.map(a => nameScore(tt, a, cue)), 0);
     const rw = tokens(p.role).length;                                      // job title match, e.g. "the finance manager"
     if (!sc && rw >= 2 && norm(text).includes(norm(p.role))) sc = 0.5 + rw * 0.05;
     if (sc > top) { top = sc; hits = [p]; } else if (sc && sc === top) hits.push(p);
@@ -3658,6 +3683,9 @@ Work out what the visitor really needs, even if they ask in a roundabout way, th
    a meeting room, parking, deliveries...). Reply with exactly one line: GO: <place name copied exactly from PLACES>
 2. They are looking for a person, by name or by job, team or what the person handles (for example "someone about invoices").
    Reply with exactly one line: PERSON: <full name copied exactly from PEOPLE>
+   Names may be spelt differently (heard by a microphone): pick the closest name in PEOPLE. You don't know where people
+   sit or which team they are in, so never say it yourself: the PERSON line shows it. If no one in PEOPLE is close,
+   say you couldn't find that name and ask them to spell it or check with a staff member.
 3. They want you to DO something: a countdown, a timer, a reminder, check or cancel a timer, maths, a handshake challenge, or switching the ${lightsReady() ? lightsCfg().room + " " : ""}lights now or later.
    Reply with exactly one line: DO: <the request in plain short words, times as numbers>
    For example: "DO: remind me in 15 minutes to call John", "DO: turn off the wall light in 10 minutes", "DO: countdown 30 seconds",
